@@ -12,6 +12,6 @@ crate-type = ["cdylib"]
 [workspace]
 
 [dependencies]
-irradiance = { path = "../crustimg_redo_plus/irradiance" }
+irradiance = { path = "../../crustimg_redo_plus/irradiance" }
 pyo3 = { version = "0.23", features = ["extension-module", "abi3-py39"] }
 numpy = "0.23"
