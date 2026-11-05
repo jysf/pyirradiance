@@ -29,11 +29,56 @@ fn parse(data: &[u8]) -> Result<(Container<'_>, irradiance::ifd::Sensor), irradi
     Ok((container, sensor))
 }
 
+/// Bound the plane allocation by the input size before allocating it.
+///
+/// `unpack_into` validates strips only once the caller has allocated `dst`, so
+/// a forged `ImageWidth`/`ImageLength` would otherwise request an unbounded
+/// buffer and abort on OOM (uncatchable from Python). For an uncompressed
+/// plane every pixel's bits must live in the strips, and the strips in `data`,
+/// so this caps the plane at `data.len() * 8` samples. Stopgap until upstream
+/// ships `plane::validate` (irradiance SPEC-039); `unpack_into` still does
+/// the exact checks afterwards.
+fn plane_len(sensor: &irradiance::ifd::Sensor, data: &[u8]) -> Result<usize, irradiance::Error> {
+    let file_len = data.len() as u64;
+    let mut strip_bytes: u64 = 0;
+    for (&offset, &count) in sensor.strip_offsets.iter().zip(&sensor.strip_byte_counts) {
+        let end = u64::from(offset) + u64::from(count);
+        if end > file_len {
+            return Err(irradiance::Error::Truncated {
+                at: offset as usize,
+                len: count as usize,
+            });
+        }
+        strip_bytes += u64::from(count);
+    }
+    // Real files never overlap strips; rejecting it stops N overlapping
+    // strips from multiplying the bound by N.
+    if strip_bytes > file_len {
+        return Err(irradiance::Error::Truncated { at: 0, len: strip_bytes as usize });
+    }
+    // max(bits, 1): a zero bit depth must not void the bound. unpack_into
+    // rejects unsupported depths with its own typed error afterwards.
+    let bits = u64::from(sensor.bits_per_sample.max(1));
+    let strip_bits = strip_bytes * 8;
+    let pixels = u64::from(sensor.width) * u64::from(sensor.height); // u32*u32 fits u64
+    match pixels.checked_mul(bits) {
+        Some(expected_bits) if expected_bits <= strip_bits => {
+            // Bounded by data.len() * 8, so it fits usize wherever data does.
+            usize::try_from(pixels).map_err(|_| irradiance::Error::PackedSizeMismatch {
+                expected_bits,
+                strip_bits,
+            })
+        }
+        other => Err(irradiance::Error::PackedSizeMismatch {
+            expected_bits: other.unwrap_or(u64::MAX),
+            strip_bits,
+        }),
+    }
+}
+
 fn unpack(data: &[u8]) -> Result<(irradiance::ifd::Sensor, Vec<u16>), irradiance::Error> {
     let (container, sensor) = parse(data)?;
-    let n = usize::try_from(u64::from(sensor.width) * u64::from(sensor.height)).map_err(|_| {
-        irradiance::Error::PlaneBufferWrongLength { expected: u64::MAX, actual: 0 }
-    })?;
+    let n = plane_len(&sensor, data)?;
     let mut plane = vec![0u16; n];
     irradiance::plane::unpack_into(&sensor, container.byte_order(), data, &mut plane)?;
     Ok((sensor, plane))

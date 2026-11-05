@@ -13,15 +13,15 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
   `demosaic(bytes) -> (float32[H,W,3], DEVELOP_VERSION)` (uncorrected camera-space
   RGB — colour correction is upstream STAGE-008, not done), GIL released.
 - `tests/smoke.py <dng>`: real file, 83 hostile inputs, determinism, 4-process agreement.
+- `tests/hostile_dims.py <dng>`: forged width/height (6 cases, each in a subprocess) must
+  raise `ValueError`, not panic/abort.
   Passed on `~/PSeven/experiments/crustimg_redo_plus/images/CANON-EOS-5D-MARK-III/5G4A9394.DNG`.
 - Build: `uv venv .venv && uv pip install maturin numpy && .venv/bin/maturin develop --release`.
 
 ## Known gaps (do in this order)
-1. **Allocation guard (blocks the "never crashes" claim).** `unpack()` does
-   `vec![0u16; width*height]` before validating; a corrupted header can request a
-   huge buffer and abort on OOM (not catchable). Cap pixel count and/or require the
-   strip byte total to fit within `data.len()` before allocating. Add hostile tests
-   with forged width/height.
+1. ~~**Allocation guard.**~~ Done (interim): `plane_len()` in `src/lib.rs` bounds the
+   plane by the strips, and the strips by `data.len()`, before allocating. Swap it for
+   upstream `plane::validate` once irradiance 0.2.0 ships it (SPEC-039, STAGE-010).
 2. `unpack_bayer(data, out=None)`: optional preallocated `uint16[H,W]` array (NumPy or
    `torch.from_numpy`/pinned tensor) written via `unpack_into`; shape mismatch -> `ValueError`.
 3. `pack_bayer_4ch(plane, meta, out=None)`: RGGB (any of the 4 phases, from `cfa_pattern`)
