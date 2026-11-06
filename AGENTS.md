@@ -12,8 +12,9 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
 - CI: `ci.yml` (Linux x86_64 + arm64, macOS arm64; weekly canary vs upstream main),
   `wheels.yml` (tested wheels per platform; tag `vX.Y.Z` -> GitHub release). Upstream pin:
   `.github/irradiance-pin`.
-- Released: v0.0.1 (GitHub pre-release, 3 tested wheels). Next release = bump `version` in
-  pyproject.toml + Cargo.toml, then tag `vX.Y.Z`.
+- Released: v0.0.1 (GitHub only), v0.0.2+ on PyPI as `irradiance` (wheels only, trusted
+  publishing from `wheels.yml`, environment `pypi`). Next release = bump `version` in
+  pyproject.toml + Cargo.toml, then tag `vX.Y.Z`; the tag publishes to PyPI then GitHub.
 - `src/lib.rs`: `unpack_bayer(bytes, out=None) -> (uint16[H,W], SensorMeta)`,
   `pack_bayer_4ch(plane, meta, out=None, normalize=False) -> [4,H/2,W/2]`,
   `demosaic(bytes) -> (float32[H,W,3], DEVELOP_VERSION)` (camera-space RGB, raw values),
@@ -59,8 +60,10 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
 - No unsafe of our own beyond what PyO3/numpy require; no panics (`unwrap`/indexing) in glue.
 - Bit-identical across arch is verified only for the synthetic golden set (`tests/golden.py`);
   keep claims scoped to that until real-file hashes are compared on a second arch.
-- Don't publish to PyPI; the crate dep must move from the path to a crates.io version first
-  (needs an `irradiance` release containing `demosaic`).
+- PyPI gets wheels only, and only via a `vX.Y.Z` tag through CI (never upload by hand). No
+  sdist until the crate dep moves from the path to a crates.io version (needs an `irradiance`
+  release containing `demosaic`). PyPI versions are immutable: a bad release is yanked, not
+  replaced.
 - Corpus: `~/PSeven/experiments/crustimg_redo_plus/images`. Decodes today: Canon 5D3 DNG and
   Nikon D300S DNG (Bayer), Leica M Monochrom + Q2 Mono DNGs (mono). `ValueError` (compression 7 /
   65535): Leica M Typ 246 DNG, Pentax K-3 III DNG + PEF — upstream PROJ-003 (lossless JPEG) may change this.

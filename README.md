@@ -1,4 +1,4 @@
-# pyirradiance
+# irradiance (Python)
 
 Python/NumPy bindings for [`irradiance`](https://github.com/jysf/irradiance), a
 pure-Rust camera RAW reader. Built as a dataloader primitive for PyTorch/ML:
@@ -8,9 +8,8 @@ pure-Rust camera RAW reader. Built as a dataloader primitive for PyTorch/ML:
 - **The GIL is released** while decoding, so threads scale.
 - **Deterministic output**, with no C/C++ toolchain or system libraries.
 
-> **Status: prototype.** Prebuilt wheels are on the
-> [releases page](https://github.com/jysf/pyirradiance/releases); not on PyPI
-> until an `irradiance` crates.io release ships `demosaic` (planned as 0.2.0).
+> **Status: prototype** (0.0.x). The API may change. Wheels are on PyPI and the
+> [releases page](https://github.com/jysf/pyirradiance/releases).
 
 ## Scope
 
@@ -35,25 +34,14 @@ levels, white balance or colour matrix.
 
 ## Install
 
-Prebuilt wheels (Python 3.9+, no Rust needed) for Linux x86_64, Linux arm64
-and macOS (Intel and Apple Silicon) are attached to each
-[release](https://github.com/jysf/pyirradiance/releases). Install the one for
-your platform by URL:
-
 ```sh
-R=https://github.com/jysf/pyirradiance/releases/download/v0.0.1
-# Linux x86_64
-pip install $R/irradiance-0.0.1-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
-# Linux arm64
-pip install $R/irradiance-0.0.1-cp39-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl
-# macOS
-pip install $R/irradiance-0.0.1-cp39-abi3-macosx_10_12_universal2.macosx_10_12_x86_64.macosx_11_0_arm64.whl
+pip install irradiance
 ```
 
-Install by exact URL rather than `pip install irradiance`: the name isn't
-registered on PyPI yet, so a bare name could resolve to someone else's package.
-Each wheel passed the full test suite in CI before release. Windows isn't built
-yet.
+Prebuilt wheels (Python 3.9+, no Rust needed) for Linux x86_64, Linux arm64
+and macOS (Intel and Apple Silicon); each passed the full test suite in CI
+before release. Windows isn't built yet, and there's no source distribution
+until the upstream crate is on crates.io, so other platforms build from source.
 
 ### From source
 
@@ -145,5 +133,5 @@ in `tests/` also run on real files; see `CLAUDE.md`.
 
 ## License
 
-Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE)
+Licensed under either of [MIT](https://github.com/jysf/pyirradiance/blob/main/LICENSE-MIT) or [Apache-2.0](https://github.com/jysf/pyirradiance/blob/main/LICENSE-APACHE)
 at your option, the same as upstream `irradiance`.

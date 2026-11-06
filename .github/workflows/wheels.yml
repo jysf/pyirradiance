@@ -2,8 +2,8 @@ name: Wheels
 
 # Build an abi3 wheel per platform, install it into a clean venv and run the
 # full test suite against it (the shipped artifact, not a dev build). Pushing
-# a tag vX.Y.Z (matching pyproject's version) publishes them as a GitHub
-# release, so users can `pip install` without a Rust toolchain.
+# a tag vX.Y.Z (matching pyproject's version) publishes them to PyPI and as a
+# GitHub release, so users can `pip install irradiance` without Rust.
 on:
   push:
     branches: [main]
@@ -74,12 +74,16 @@ jobs:
           name: wheel-${{ matrix.target }}
           path: dist/*.whl
 
-  release:
+  # Wheels only: an sdist would need the upstream path dep, which isn't on
+  # crates.io yet. Trusted publishing (OIDC), no stored token; the pending
+  # publisher on pypi.org names this repo, this workflow and environment `pypi`.
+  pypi:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
-      contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -91,6 +95,22 @@ jobs:
             exit 1
           }
 
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          merge-multiple: true
+          path: dist
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # After PyPI, so a failed upload never leaves a release that pip can't find.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: wheel-*
