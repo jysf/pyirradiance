@@ -8,8 +8,9 @@ pure-Rust camera RAW reader. Built as a dataloader primitive for PyTorch/ML:
 - **The GIL is released** while decoding, so threads scale.
 - **Deterministic output**, with no C/C++ toolchain or system libraries.
 
-> **Status: prototype.** Not on PyPI. It depends on `irradiance` by local path
-> until an `irradiance` release ships `demosaic` (planned as 0.2.0).
+> **Status: prototype.** Prebuilt wheels are on the
+> [releases page](https://github.com/jysf/pyirradiance/releases); not on PyPI
+> until an `irradiance` crates.io release ships `demosaic` (planned as 0.2.0).
 
 ## Scope
 
@@ -32,7 +33,29 @@ DNG colour matrices, no tone curve or gamma), clipped to `[0, 1]`. Files with a
 `demosaic` output is **camera-space linear RGB**: raw values, no black/white
 levels, white balance or colour matrix.
 
-## Install (from source)
+## Install
+
+Prebuilt wheels (Python 3.9+, no Rust needed) for Linux x86_64, Linux arm64
+and macOS (Intel and Apple Silicon) are attached to each
+[release](https://github.com/jysf/pyirradiance/releases). Install the one for
+your platform by URL:
+
+```sh
+R=https://github.com/jysf/pyirradiance/releases/download/v0.0.1
+# Linux x86_64
+pip install $R/irradiance-0.0.1-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+# Linux arm64
+pip install $R/irradiance-0.0.1-cp39-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl
+# macOS
+pip install $R/irradiance-0.0.1-cp39-abi3-macosx_10_12_universal2.macosx_10_12_x86_64.macosx_11_0_arm64.whl
+```
+
+Install by exact URL rather than `pip install irradiance`: the name isn't
+registered on PyPI yet, so a bare name could resolve to someone else's package.
+Each wheel passed the full test suite in CI before release. Windows isn't built
+yet.
+
+### From source
 
 Needs Rust 1.90+ and the `irradiance` repo checked out at
 `../../crustimg_redo_plus/irradiance` relative to this one (Cargo path dep).
