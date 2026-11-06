@@ -25,8 +25,10 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
    upstream `plane::validate` once irradiance 0.2.0 ships it (SPEC-039, STAGE-010).
 2. ~~`unpack_bayer(data, out=None)`~~ Done: C-contiguous writable `uint16[H,W]` (use
    `tensor.numpy()` for torch); bad shape/order/read-only -> `ValueError`, bad dtype -> `TypeError`.
-3. `pack_bayer_4ch(plane, meta, out=None)`: RGGB (any of the 4 phases, from `cfa_pattern`)
-   -> `[4, H/2, W/2]`, optional black/white-level normalisation. Pure Rust, no unsafe of our own.
+3. ~~`pack_bayer_4ch(plane, meta, out=None, normalize=False)`~~ Done: `[R, Gr, Gb, B]` for all
+   4 phases (`src/pack.rs`); normalise = per-site BlackLevel (origin = ActiveArea) to
+   WhiteLevel, float32, unclipped. Meta gained `cfa_repeat_dim`, `cfa_plane_color`,
+   `black_levels`, `black_level_repeat_dim`, `active_area`.
 4. `meta.cfa_pattern` should be a `list[int]`, not `bytes`.
 5. `tests/test_dataloader.py`: torch `DataLoader(num_workers=4)` over the corpus plus a
    corrupt file mixed in; assert the run completes and the bad file surfaces as an exception.

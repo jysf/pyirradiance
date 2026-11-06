@@ -18,6 +18,7 @@ uv venv .venv && uv pip install maturin numpy
 # Rust-only check (faster than a full maturin build)
 cargo check
 cargo clippy
+cargo test --lib   # pure-Rust unit tests (src/pack.rs)
 
 # Tests: real file, hostile inputs, determinism, 4-process agreement; forged dimensions
 DNG=~/PSeven/experiments/crustimg_redo_plus/images/CANON-EOS-5D-MARK-III/5G4A9394.DNG
@@ -32,6 +33,7 @@ There is no pytest suite yet; `tests/smoke.py`, `tests/hostile_dims.py` and `tes
 
 - **Naming is split three ways**: the distribution is `pyirradiance` (pyproject), the Rust cdylib is `irradiance_py` (Cargo `[lib]`), and the Python import name is `irradiance` (`[tool.maturin] module-name` and `#[pyo3(name = "irradiance")]`). Keep these consistent when touching packaging.
 - **Standalone Cargo workspace**: `Cargo.toml` declares an empty `[workspace]` so this crate doesn't join the parent repo's workspace. Don't remove it.
+- **Pure-Rust kernels live in their own modules** (`src/pack.rs`: Bayer -> 4-channel packing), with no PyO3 types, so `cargo test --lib` covers them.
 - **All glue lives in `src/lib.rs`**. Every entry point follows the same shape:
   1. Take `&[u8]` (Python `bytes`).
   2. Do all decoding inside `py.allow_threads(...)` (GIL released) and return `Result<_, irradiance::Error>`.

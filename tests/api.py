@@ -1,4 +1,4 @@
-"""API tests: unpack_bayer(out=).
+"""API tests: unpack_bayer(out=), pack_bayer_4ch.
 
 Usage: api.py <bayer.dng>
 """
@@ -7,6 +7,11 @@ import sys
 
 import numpy as np
 import irradiance
+
+from hostile_dims import ifd_entries  # same tests/ dir
+
+TAG_CFA_PATTERN = 33422
+MONO = os.path.expanduser("~/PSeven/experiments/crustimg_redo_plus/images/LEICA-M-MONOCHROM/L1000622.DNG")
 
 data = open(os.path.expanduser(sys.argv[1]), "rb").read()
 ref, meta = irradiance.unpack_bayer(data)
@@ -52,6 +57,77 @@ def test_out():
             irradiance.unpack_bayer(data, out=t.numpy())
             assert np.array_equal(t.numpy(), ref)
             print("  torch tensor .numpy() view: ok")
+
+
+def forge_cfa(pattern):
+    """Rewrite the 4 inline CFAPattern bytes (sensor IFD) to another phase."""
+    b = bytearray(data)
+    hits = 0
+    for e, tag, typ, count in ifd_entries(data):
+        if tag == TAG_CFA_PATTERN and count == 4:
+            b[e + 8:e + 12] = bytes(pattern)
+            hits += 1
+    assert hits, "no CFAPattern entry found"
+    return bytes(b)
+
+
+def reference_4ch(plane, pattern):
+    """Independent numpy reference: [R, Gr, Gb, B], Gr on red's row."""
+    pos = [(i // 2, i % 2) for i in range(4)]
+    r = pos[pattern.index(0)]
+    b = pos[pattern.index(2)]
+    greens = [p for p, c in zip(pos, pattern) if c == 1]
+    gr = next(g for g in greens if g[0] == r[0])
+    gb = next(g for g in greens if g[0] == b[0])
+    h2, w2 = plane.shape[0] // 2, plane.shape[1] // 2
+    return np.stack([plane[y::2, x::2][:h2, :w2] for y, x in (r, gr, gb, b)])
+
+
+def test_pack_phases():
+    for name, pattern in [("RGGB", [0, 1, 1, 2]), ("GRBG", [1, 0, 2, 1]),
+                          ("GBRG", [1, 2, 0, 1]), ("BGGR", [2, 1, 1, 0])]:
+        plane, m = irradiance.unpack_bayer(forge_cfa(pattern))
+        got = irradiance.pack_bayer_4ch(plane, m)
+        assert got.dtype == np.uint16 and got.shape == (4, H // 2, W // 2), got.shape
+        assert np.array_equal(got, reference_4ch(plane, pattern)), name
+        print(f"  {name}: matches numpy reference")
+    for bad in ([0, 0, 1, 2], [0, 1, 2, 1], [1, 1, 0, 2], [0, 1, 1, 3]):
+        plane, m = irradiance.unpack_bayer(forge_cfa(bad))
+        print(f"  {bad}:", raises(ValueError, irradiance.pack_bayer_4ch, plane, m))
+
+
+def test_pack_normalize():
+    assert (meta.cfa_repeat_dim, meta.black_level_repeat_dim) == ((2, 2), (2, 2))
+    got = irradiance.pack_bayer_4ch(ref, meta, normalize=True)
+    assert got.dtype == np.float32
+    # Black pattern origin is the ActiveArea top-left (even here, so slot == black index).
+    top, left = meta.active_area[0], meta.active_area[1]
+    lv = np.array(meta.black_levels, dtype=np.float32).reshape(2, 2)
+    blacks = [lv[(y - top) % 2, (x - left) % 2] for y, x in [(0, 0), (0, 1), (1, 0), (1, 1)]]
+    white = np.float32(meta.white_level)
+    raw = reference_4ch(ref, [0, 1, 1, 2]).astype(np.float32)
+    want = np.stack([(raw[k] - blacks[k]) / (white - blacks[k]) for k in range(4)])
+    assert np.array_equal(got, want), "normalize must match the float32 formula bit-for-bit"
+    print(f"  blacks per channel {blacks}, range [{got.min():.4f}, {got.max():.4f}] (unclipped)")
+
+
+def test_pack_out():
+    out = np.zeros((4, H // 2, W // 2), np.uint16)
+    assert irradiance.pack_bayer_4ch(ref, meta, out=out) is out
+    assert np.array_equal(out, irradiance.pack_bayer_4ch(ref, meta))
+    outf = np.zeros((4, H // 2, W // 2), np.float32)
+    assert irradiance.pack_bayer_4ch(ref, meta, out=outf, normalize=True) is outf
+    assert np.array_equal(outf, irradiance.pack_bayer_4ch(ref, meta, normalize=True))
+
+    print("  u16 out with normalize:", raises(TypeError, irradiance.pack_bayer_4ch, ref, meta, out=out, normalize=True))
+    print("  wrong out shape:", raises(ValueError, irradiance.pack_bayer_4ch, ref, meta, out=np.zeros((4, H // 2, W // 2 + 1), np.uint16)))
+    print("  out aliases plane:", raises(ValueError, irradiance.pack_bayer_4ch, ref, meta, out=ref.reshape(4, H // 2, W // 2)))
+    print("  cropped plane:", raises(ValueError, irradiance.pack_bayer_4ch, ref[1:, 1:].copy(), meta))
+    print("  Fortran plane:", raises(ValueError, irradiance.pack_bayer_4ch, np.asfortranarray(ref), meta))
+    print("  float plane:", raises(TypeError, irradiance.pack_bayer_4ch, ref.astype(np.float32), meta))
+    if os.path.exists(MONO):
+        mplane, mmeta = irradiance.unpack_bayer(open(MONO, "rb").read())
+        print("  monochrome:", raises(ValueError, irradiance.pack_bayer_4ch, mplane, mmeta))
 
 
 if __name__ == "__main__":
