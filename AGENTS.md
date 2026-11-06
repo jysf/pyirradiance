@@ -47,7 +47,6 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
 - Push this repo to GitHub so CI actually runs (not done: needs the owner's decision).
 - When irradiance 0.2.0 ships (STAGE-010): pin it from crates.io, swap `plane_len()` for
   `plane::validate`, map `ErrorKind` (SPEC-040) to exception subclasses if it lands.
-- Pick a licence (README says "not yet chosen").
 
 ## Rules
 - No unsafe of our own beyond what PyO3/numpy require; no panics (`unwrap`/indexing) in glue.

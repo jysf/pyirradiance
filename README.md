@@ -115,4 +115,5 @@ in `tests/` also run on real files; see `CLAUDE.md`.
 
 ## License
 
-Not yet chosen for this crate; upstream `irradiance` is MIT OR Apache-2.0.
+Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE)
+at your option, the same as upstream `irradiance`.
