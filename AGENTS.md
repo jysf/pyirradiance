@@ -15,6 +15,7 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
 - `tests/smoke.py <dng>`: real file, 83 hostile inputs, determinism, 4-process agreement.
 - `tests/hostile_dims.py <dng>`: forged width/height (6 cases, each in a subprocess) must
   raise `ValueError`, not panic/abort.
+- `tests/api.py <dng>`: `out=` and (later) packing/meta API checks.
   Passed on `~/PSeven/experiments/crustimg_redo_plus/images/CANON-EOS-5D-MARK-III/5G4A9394.DNG`.
 - Build: `uv venv .venv && uv pip install maturin numpy && .venv/bin/maturin develop --release`.
 
@@ -22,8 +23,8 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
 1. ~~**Allocation guard.**~~ Done (interim): `plane_len()` in `src/lib.rs` bounds the
    plane by the strips, and the strips by `data.len()`, before allocating. Swap it for
    upstream `plane::validate` once irradiance 0.2.0 ships it (SPEC-039, STAGE-010).
-2. `unpack_bayer(data, out=None)`: optional preallocated `uint16[H,W]` array (NumPy or
-   `torch.from_numpy`/pinned tensor) written via `unpack_into`; shape mismatch -> `ValueError`.
+2. ~~`unpack_bayer(data, out=None)`~~ Done: C-contiguous writable `uint16[H,W]` (use
+   `tensor.numpy()` for torch); bad shape/order/read-only -> `ValueError`, bad dtype -> `TypeError`.
 3. `pack_bayer_4ch(plane, meta, out=None)`: RGGB (any of the 4 phases, from `cfa_pattern`)
    -> `[4, H/2, W/2]`, optional black/white-level normalisation. Pure Rust, no unsafe of our own.
 4. `meta.cfa_pattern` should be a `list[int]`, not `bytes`.

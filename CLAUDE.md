@@ -23,9 +23,10 @@ cargo clippy
 DNG=~/PSeven/experiments/crustimg_redo_plus/images/CANON-EOS-5D-MARK-III/5G4A9394.DNG
 .venv/bin/python tests/smoke.py $DNG
 .venv/bin/python tests/hostile_dims.py $DNG
+.venv/bin/python tests/api.py $DNG
 ```
 
-There is no pytest suite yet; `tests/smoke.py` and `tests/hostile_dims.py` are scripts that take the DNG path as `argv[1]`. Run both after each change.
+There is no pytest suite yet; `tests/smoke.py`, `tests/hostile_dims.py` and `tests/api.py` are scripts that take the DNG path as `argv[1]`. Run all of them after each change.
 
 ## Architecture
 

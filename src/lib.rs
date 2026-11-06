@@ -1,14 +1,63 @@
 //! Prototype Python bindings for `irradiance`.
 //!
-//! Every entry point takes `bytes`, returns a NumPy array, and maps the
-//! library's typed `Error` to a Python `ValueError` — no panic path of our own.
+//! Every entry point takes `bytes` (or an array), returns a NumPy array, and
+//! maps every failure to a Python `ValueError` — no panic path of our own.
 use irradiance::ifd::Container;
-use numpy::{PyArray2, PyArray3, PyArrayMethods};
-use pyo3::exceptions::PyValueError;
+use numpy::ndarray::Dimension;
+use numpy::{
+    Element, PyArray, PyArray2, PyArray3, PyArrayMethods, PyReadwriteArray,
+    PyUntypedArrayMethods,
+};
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
+
+/// A failure inside GIL-released code: the library's typed error, or ours.
+enum GlueError {
+    Lib(irradiance::Error),
+    Invalid(String),
+}
+
+impl From<irradiance::Error> for GlueError {
+    fn from(e: irradiance::Error) -> Self {
+        GlueError::Lib(e)
+    }
+}
+
+impl From<GlueError> for PyErr {
+    fn from(e: GlueError) -> Self {
+        match e {
+            GlueError::Lib(e) => err(e),
+            GlueError::Invalid(msg) => PyValueError::new_err(msg),
+        }
+    }
+}
 
 fn err(e: irradiance::Error) -> PyErr {
     PyValueError::new_err(e.to_string())
+}
+
+/// Downcast a caller-supplied `out=` object, naming the expected array type in
+/// the `TypeError` (PyO3's default message says only `PyArray<T, D>`).
+fn out_array<'py, T: Element, D: Dimension>(
+    out: Bound<'py, PyAny>,
+    expected: &str,
+) -> PyResult<Bound<'py, PyArray<T, D>>> {
+    out.downcast_into::<PyArray<T, D>>()
+        .map_err(|_| PyTypeError::new_err(format!("out must be a {expected} numpy array")))
+}
+
+/// Borrow a caller-supplied `out=` array for writing.
+///
+/// Requires C order explicitly: numpy's `as_slice_mut` also accepts
+/// Fortran-contiguous arrays, which would be filled transposed.
+fn writable<'py, T: Element, D: Dimension>(
+    a: &Bound<'py, PyArray<T, D>>,
+) -> PyResult<PyReadwriteArray<'py, T, D>> {
+    if !a.is_c_contiguous() {
+        return Err(PyValueError::new_err("out must be a C-contiguous array"));
+    }
+    a.try_readwrite()
+        .map_err(|e| PyValueError::new_err(format!("out is not writable: {e}")))
 }
 
 /// Sensor metadata needed to interpret the mosaic.
@@ -84,6 +133,24 @@ fn unpack(data: &[u8]) -> Result<(irradiance::ifd::Sensor, Vec<u16>), irradiance
     Ok((sensor, plane))
 }
 
+/// Unpack into a caller-owned `[H, W]` buffer whose shape is `dst_shape`.
+fn unpack_to(
+    data: &[u8],
+    dst: &mut [u16],
+    dst_shape: &[usize],
+) -> Result<irradiance::ifd::Sensor, GlueError> {
+    let (container, sensor) = parse(data)?;
+    plane_len(&sensor, data)?;
+    let want = [sensor.height as usize, sensor.width as usize];
+    if dst_shape != want {
+        return Err(GlueError::Invalid(format!(
+            "out has shape {dst_shape:?} but the plane is {want:?}"
+        )));
+    }
+    irradiance::plane::unpack_into(&sensor, container.byte_order(), data, dst)?;
+    Ok(sensor)
+}
+
 fn meta(s: &irradiance::ifd::Sensor) -> SensorMeta {
     SensorMeta {
         width: s.width,
@@ -96,11 +163,28 @@ fn meta(s: &irradiance::ifd::Sensor) -> SensorMeta {
 }
 
 /// Unpack the raw sensor plane: `(uint16[H, W], SensorMeta)`.
+///
+/// With `out`, writes into that C-contiguous, writable `uint16[H, W]` array
+/// (e.g. `tensor.numpy()` of a pinned tensor) and returns it; no allocation.
+/// On a decode error `out` may be partly written.
 #[pyfunction]
+#[pyo3(signature = (data, out=None))]
 fn unpack_bayer<'py>(
     py: Python<'py>,
     data: &[u8],
+    out: Option<Bound<'py, PyAny>>,
 ) -> PyResult<(Bound<'py, PyArray2<u16>>, SensorMeta)> {
+    if let Some(out) = out {
+        let out: Bound<'py, PyArray2<u16>> = out_array(out, "uint16[H, W]")?;
+        let shape = out.shape().to_vec();
+        let mut rw = writable(&out)?;
+        let dst = rw
+            .as_slice_mut()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let sensor = py.allow_threads(|| unpack_to(data, dst, &shape))?;
+        drop(rw);
+        return Ok((out, meta(&sensor)));
+    }
     // Release the GIL: DataLoader workers may be threads.
     let (sensor, plane) = py.allow_threads(|| unpack(data)).map_err(err)?;
     let flat = numpy::PyArray1::from_vec(py, plane);
