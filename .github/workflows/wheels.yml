@@ -121,5 +121,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.whl --prerelease \
+          gh release create "$GITHUB_REF_NAME" dist/*.whl --repo "$GITHUB_REPOSITORY" --prerelease \
             --title "$GITHUB_REF_NAME" --generate-notes
