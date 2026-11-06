@@ -101,6 +101,10 @@ fn parse(data: &[u8]) -> Result<(Container<'_>, irradiance::ifd::Sensor), irradi
 /// ships `plane::validate` (irradiance SPEC-039); `unpack_into` still does
 /// the exact checks afterwards.
 fn plane_len(sensor: &irradiance::ifd::Sensor, data: &[u8]) -> Result<usize, irradiance::Error> {
+    // Compression first, as unpack_into does: a compressed plane is
+    // legitimately smaller than w*h*bits, and "unsupported compression" is the
+    // error users need to see, not a size mismatch.
+    sensor.require_uncompressed()?;
     let file_len = data.len() as u64;
     let mut strip_bytes: u64 = 0;
     for (&offset, &count) in sensor.strip_offsets.iter().zip(&sensor.strip_byte_counts) {

@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # One-time setup
-uv venv .venv && uv pip install maturin numpy
+uv venv .venv && uv pip install maturin numpy torch   # torch: dataloader test only
 
 # Build + install the extension into .venv (rerun after every Rust change)
 .venv/bin/maturin develop --release
@@ -25,9 +25,10 @@ DNG=~/PSeven/experiments/crustimg_redo_plus/images/CANON-EOS-5D-MARK-III/5G4A939
 .venv/bin/python tests/smoke.py $DNG
 .venv/bin/python tests/hostile_dims.py $DNG
 .venv/bin/python tests/api.py $DNG
+.venv/bin/python tests/test_dataloader.py ~/PSeven/experiments/crustimg_redo_plus/images
 ```
 
-There is no pytest suite yet; `tests/smoke.py`, `tests/hostile_dims.py` and `tests/api.py` are scripts that take the DNG path as `argv[1]`. Run all of them after each change.
+There is no pytest suite yet; the `tests/` files are scripts. `smoke.py`, `hostile_dims.py` and `api.py` take the DNG path as `argv[1]`; `test_dataloader.py` takes the corpus directory. Run all of them after each change.
 
 ## Architecture
 
@@ -35,10 +36,11 @@ There is no pytest suite yet; `tests/smoke.py`, `tests/hostile_dims.py` and `tes
 - **Standalone Cargo workspace**: `Cargo.toml` declares an empty `[workspace]` so this crate doesn't join the parent repo's workspace. Don't remove it.
 - **Pure-Rust kernels live in their own modules** (`src/pack.rs`: Bayer -> 4-channel packing), with no PyO3 types, so `cargo test --lib` covers them.
 - **All glue lives in `src/lib.rs`**. Every entry point follows the same shape:
-  1. Take `&[u8]` (Python `bytes`).
-  2. Do all decoding inside `py.allow_threads(...)` (GIL released) and return `Result<_, irradiance::Error>`.
-  3. Map errors to `ValueError` via `err()`; never `unwrap` or index in glue.
-  4. Build the NumPy array from a `Vec` with `PyArray1::from_vec(...).reshape(...)`.
+  1. Take `&[u8]` (Python `bytes`) or a numpy array.
+  2. Do all decoding inside `py.allow_threads(...)` (GIL released) and return `Result<_, irradiance::Error>` (or `GlueError` for our own checks).
+  3. Map errors to `ValueError` (`err()` / `From<GlueError>`); wrong array dtype/rank is `TypeError`. Never `unwrap` or index in glue.
+  4. Build the NumPy array from a `Vec` with `PyArray1::from_vec(...).reshape(...)`, or write into `out=` via `writable()`, which enforces C order (numpy's `as_slice` also accepts Fortran order).
+- **Allocation guard**: every decode calls `plane_len()` before allocating; keep it that way for any new entry point.
 - **Pipeline over the upstream crate**: `Container::parse` -> `container.sensor()` (metadata) -> `plane::unpack_into` (u16 Bayer plane) -> `demosaic::demosaic_into` (u16 RGB) -> `tone::to_linear_f32_into` (f32). The `_into` APIs write into caller-allocated buffers, which is what makes the `out=` and allocation-guard gaps possible without changing upstream.
 - **Upstream crate is read-only**: `irradiance` is a path dependency at `../../crustimg_redo_plus/irradiance`. If its API blocks you (e.g. no pre-validation size helper), work around it here and record the issue as a note; don't edit it.
 - `python/` is currently empty (no pure-Python layer yet).

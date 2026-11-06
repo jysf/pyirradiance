@@ -8,16 +8,21 @@ A crash-proof, deterministic, GIL-free RAW dataloader primitive for PyTorch/ML:
 a truncated or hostile file raises `ValueError`, never kills a worker; output is
 bit-identical across OS/arch; wheel is small, no C++ toolchain.
 
-## State (prototype, 1 commit)
-- `src/lib.rs`: `unpack_bayer(bytes) -> (uint16[H,W], SensorMeta)`,
+## State (prototype, gaps 1-5 done; macOS arm64 only, no CI yet)
+- `src/lib.rs`: `unpack_bayer(bytes, out=None) -> (uint16[H,W], SensorMeta)`,
+  `pack_bayer_4ch(plane, meta, out=None, normalize=False) -> [4,H/2,W/2]`,
   `demosaic(bytes) -> (float32[H,W,3], DEVELOP_VERSION)` (uncorrected camera-space
   RGB — colour correction is upstream STAGE-008, not done), GIL released.
 - `tests/smoke.py <dng>`: real file, 83 hostile inputs, determinism, 4-process agreement.
 - `tests/hostile_dims.py <dng>`: forged width/height (6 cases, each in a subprocess) must
   raise `ValueError`, not panic/abort.
-- `tests/api.py <dng>`: `out=` and (later) packing/meta API checks.
-  Passed on `~/PSeven/experiments/crustimg_redo_plus/images/CANON-EOS-5D-MARK-III/5G4A9394.DNG`.
-- Build: `uv venv .venv && uv pip install maturin numpy && .venv/bin/maturin develop --release`.
+- `tests/api.py <dng>`: `out=`, `pack_bayer_4ch` (4 phases, normalise, rejections), meta types.
+- `tests/test_dataloader.py <corpus_dir>`: torch `DataLoader(num_workers=4)` over the corpus
+  + 6 corrupt files; epoch completes, worker results match main process, uncaught
+  `ValueError` re-raises in the main process (no dead workers).
+- The `<dng>` scripts pass on `~/PSeven/experiments/crustimg_redo_plus/images/CANON-EOS-5D-MARK-III/5G4A9394.DNG`.
+- Build: `uv venv .venv && uv pip install maturin numpy torch && .venv/bin/maturin develop --release`
+  (torch is only for `tests/test_dataloader.py`).
 
 ## Known gaps (do in this order)
 1. ~~**Allocation guard.**~~ Done (interim): `plane_len()` in `src/lib.rs` bounds the
@@ -30,8 +35,7 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
    WhiteLevel, float32, unclipped. Meta gained `cfa_repeat_dim`, `cfa_plane_color`,
    `black_levels`, `black_level_repeat_dim`, `active_area`.
 4. ~~`meta.cfa_pattern` should be a `list[int]`, not `bytes`.~~ Done (stored as `u16`).
-5. `tests/test_dataloader.py`: torch `DataLoader(num_workers=4)` over the corpus plus a
-   corrupt file mixed in; assert the run completes and the bad file surfaces as an exception.
+5. ~~`tests/test_dataloader.py`~~ Done (see State).
 6. README with honest scope: uncompressed Bayer DNG (+ mono) only; compressed
    DNG/lossless-JPEG (Pentax, etc.) returns `ValueError`; demosaic output is uncorrected.
 
@@ -40,4 +44,6 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
 - Don't claim bit-identical across arch until verified on a second arch (CI: linux x86_64 + macOS arm64).
 - Don't publish to PyPI; the crate dep must move from the path to a crates.io version first
   (needs an `irradiance` release containing `demosaic`).
-- Corpus: `~/PSeven/experiments/crustimg_redo_plus/images` (Bayer uncompressed: Canon 5D3 DNG; Nikon D300S DNG is a different layout).
+- Corpus: `~/PSeven/experiments/crustimg_redo_plus/images`. Decodes today: Canon 5D3 DNG and
+  Nikon D300S DNG (Bayer), Leica M Monochrom + Q2 Mono DNGs (mono). `ValueError` (compression 7 /
+  65535): Leica M Typ 246 DNG, Pentax K-3 III DNG + PEF — upstream PROJ-003 (lossless JPEG) may change this.
