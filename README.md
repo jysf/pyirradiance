@@ -108,7 +108,7 @@ main process. Catch it in `__getitem__` to skip bad files instead.
 | Hostile input -> `ValueError`, never a crash | `tests/smoke.py` (83 truncated/corrupted files), `tests/hostile_dims.py` (forged sizes up to 2^32 x 2^32, each in a subprocess), `tests/test_dataloader.py` (corrupt files mixed into a 4-worker `DataLoader`) |
 | Allocation bounded by input size | Before allocating, the decoder requires the pixel data to fit in the file; a forged header can't request more than ~8 samples per input byte |
 | Deterministic | Repeat decodes and 4 processes produce identical hashes |
-| Same bits on every platform | `tests/golden.py`: 29 output hashes on synthetic DNGs (all 4 CFA phases; unpack, pack, normalise, demosaic, develop on both colour paths). Match verified on macOS arm64 (also on the real corpus), Linux arm64 and Linux x86_64 (Docker, synthetic files only; `develop` hashes via CI only). CI (`.github/workflows/ci.yml`) runs the same on ubuntu + macOS. |
+| Same bits on every platform | `tests/golden.py`: 29 output hashes on synthetic DNGs (all 4 CFA phases; unpack, pack, normalise, demosaic, develop on both colour paths). Match verified on macOS arm64 (also on the real corpus), Linux x86_64 and Linux arm64 (synthetic files only). CI runs this on every push, and `wheels.yml` runs it against each built wheel, including under Python 3.9. |
 
 ## Development
 

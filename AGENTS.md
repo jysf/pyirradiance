@@ -9,6 +9,9 @@ a truncated or hostile file raises `ValueError`, never kills a worker; output is
 bit-identical across OS/arch; wheel is small, no C++ toolchain.
 
 ## State (prototype, gaps 1-6 done; public at github.com/jysf/pyirradiance, CI green)
+- CI: `ci.yml` (Linux x86_64 + arm64, macOS arm64; weekly canary vs upstream main),
+  `wheels.yml` (tested wheels per platform; tag `vX.Y.Z` -> GitHub release). Upstream pin:
+  `.github/irradiance-pin`.
 - `src/lib.rs`: `unpack_bayer(bytes, out=None) -> (uint16[H,W], SensorMeta)`,
   `pack_bayer_4ch(plane, meta, out=None, normalize=False) -> [4,H/2,W/2]`,
   `demosaic(bytes) -> (float32[H,W,3], DEVELOP_VERSION)` (camera-space RGB, raw values),

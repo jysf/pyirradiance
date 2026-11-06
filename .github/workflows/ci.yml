@@ -3,20 +3,30 @@ name: CI
 on:
   push:
   pull_request:
+  # Weekly canary against upstream's latest main, so upstream changes (fixes
+  # we can adopt, or breakage) show up within a week instead of at the next
+  # deliberate pin bump.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "irradiance ref to test against (empty = the pinned commit)"
+        required: false
+        default: ""
 
 jobs:
   test:
-    # Two OS x two arch: the golden step is the cross-arch determinism check
-    # (tests/golden.json was generated on macOS arm64).
+    # The golden step is the cross-arch determinism check (tests/golden.json
+    # was generated on macOS arm64): x86_64 + arm64 Linux, arm64 macOS.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
     runs-on: ${{ matrix.os }}
     env:
-      # Pinned upstream commit; bump deliberately. Replace the path dep with a
-      # crates.io version once irradiance 0.2.0 ships (see AGENTS.md).
-      IRRADIANCE_REV: 6d0d46ad24bc72dbc2b8124fedda4c48fc449043
+      # Empty = the pinned commit in .github/irradiance-pin.
+      IRRADIANCE_REF: ${{ github.event_name == 'schedule' && 'main' || inputs.upstream_ref }}
     steps:
       - uses: actions/checkout@v4
 
@@ -24,7 +34,8 @@ jobs:
         run: |
           dest="$GITHUB_WORKSPACE/../../crustimg_redo_plus/irradiance"
           git clone --quiet https://github.com/jysf/irradiance.git "$dest"
-          git -C "$dest" checkout --quiet --detach "$IRRADIANCE_REV"
+          git -C "$dest" checkout --quiet --detach "${IRRADIANCE_REF:-$(cat .github/irradiance-pin)}"
+          echo "irradiance at $(git -C "$dest" log --oneline -1)" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - uses: dtolnay/rust-toolchain@stable
         with:

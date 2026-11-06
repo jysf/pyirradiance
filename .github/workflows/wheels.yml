@@ -1,0 +1,105 @@
+name: Wheels
+
+# Build an abi3 wheel per platform, install it into a clean venv and run the
+# full test suite against it (the shipped artifact, not a dev build). Pushing
+# a tag vX.Y.Z (matching pyproject's version) publishes them as a GitHub
+# release, so users can `pip install` without a Rust toolchain.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # zig links against an old glibc, giving a manylinux2014 wheel.
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, zig: "--zig" }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, zig: "--zig" }
+          # One wheel for both Intel and Apple Silicon Macs; tested on arm64.
+          - { os: macos-latest, target: universal2-apple-darwin, zig: "" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out irradiance where Cargo.toml's path dep expects it
+        run: |
+          dest="$GITHUB_WORKSPACE/../../crustimg_redo_plus/irradiance"
+          git clone --quiet https://github.com/jysf/irradiance.git "$dest"
+          git -C "$dest" checkout --quiet --detach "$(cat .github/irradiance-pin)"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target == 'universal2-apple-darwin' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
+
+      # 3.9 is the abi3 floor: the wheel must import there too.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: |
+            3.9
+            3.12
+
+      - name: Build wheel
+        run: |
+          python -m venv "$RUNNER_TEMP/build"
+          "$RUNNER_TEMP/build/bin/pip" install -q maturin ziglang
+          PATH="$RUNNER_TEMP/build/bin:$PATH" maturin build --release \
+            --target ${{ matrix.target }} ${{ matrix.zig }} -o dist
+          ls -l dist
+
+      - name: Test the wheel (Python 3.12, full suite)
+        run: |
+          python -m venv "$RUNNER_TEMP/t312"
+          pip="$RUNNER_TEMP/t312/bin/pip"
+          "$pip" install -q dist/*.whl numpy
+          if [ "$RUNNER_OS" = Linux ]; then
+            "$pip" install -q torch --index-url https://download.pytorch.org/whl/cpu
+          else
+            "$pip" install -q torch
+          fi
+          VENV="$RUNNER_TEMP/t312" SKIP_BUILD=1 tests/ci.sh "$RUNNER_TEMP/synth"
+
+      - name: Test the wheel (Python 3.9, golden hashes)
+        run: |
+          python3.9 -m venv "$RUNNER_TEMP/t39"
+          "$RUNNER_TEMP/t39/bin/pip" install -q dist/*.whl numpy
+          "$RUNNER_TEMP/t39/bin/python" tests/golden.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.target }}
+          path: dist/*.whl
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag must match the package version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml)
+          [ "v$version" = "$GITHUB_REF_NAME" ] || {
+            echo "tag $GITHUB_REF_NAME does not match pyproject version $version" >&2
+            exit 1
+          }
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          merge-multiple: true
+          path: dist
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.whl --prerelease \
+            --title "$GITHUB_REF_NAME" --generate-notes
