@@ -33,6 +33,7 @@ def compute():
         got[f"{name}/pack"] = sha(irradiance.pack_bayer_4ch(plane, meta).tobytes())
         got[f"{name}/pack_normalized"] = sha(irradiance.pack_bayer_4ch(plane, meta, normalize=True).tobytes())
         got[f"{name}/demosaic"] = sha(irradiance.demosaic(data)[0].tobytes())
+        got[f"{name}/develop"] = sha(irradiance.develop(data)[0].tobytes())
     return got
 
 

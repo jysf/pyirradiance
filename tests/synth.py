@@ -6,15 +6,16 @@ Pure-integer generation (no RNG, no floats), so the bytes are identical on
 every platform; tests/golden.py pins their sha256 to prove it. The Bayer file
 mirrors the Canon 5D3 DNG's shape of metadata: 16-bit samples, 2x2 per-site
 BlackLevel, WhiteLevel, an ActiveArea with an even origin, and several strips
-(so the multi-strip path and the allocation guard's strip sum are exercised).
+(so the multi-strip path and the allocation guard's strip sum are exercised),
+plus the Canon's colour calibration so develop() has real matrices to use.
 """
 import os
 import struct
 import sys
 
-BYTE, SHORT, LONG = 1, 3, 4
-SIZE = {BYTE: 1, SHORT: 2, LONG: 4}
-FMT = {BYTE: "B", SHORT: "H", LONG: "I"}
+BYTE, SHORT, LONG, RATIONAL, SRATIONAL = 1, 3, 4, 5, 10
+SIZE = {BYTE: 1, SHORT: 2, LONG: 4, RATIONAL: 8, SRATIONAL: 8}
+FMT = {BYTE: "B", SHORT: "H", LONG: "I", RATIONAL: "II", SRATIONAL: "ii"}
 
 PHOTOMETRIC_CFA, PHOTOMETRIC_LINEAR_RAW = 32803, 34892
 
@@ -49,7 +50,8 @@ def tiff(entries, pixel_data, strip_rows, row_bytes):
     out = bytearray(b"II*\0" + struct.pack("<I", 8))
     out += struct.pack("<H", len(entries))
     for (tag, typ, vals), at in zip(entries, layout):
-        packed = struct.pack("<" + FMT[typ] * len(vals), *vals)
+        flat = [x for v in vals for x in (v if isinstance(v, tuple) else (v,))]
+        packed = struct.pack("<" + FMT[typ] * len(vals), *flat)
         if at is None:
             out += struct.pack("<HHI", tag, typ, len(vals)) + packed.ljust(4, b"\0")
         else:
@@ -68,7 +70,28 @@ def sample(x, y, lo, hi):
     return lo + v
 
 
-def bayer_dng(width=256, height=192, pattern=(0, 1, 1, 2)):
+def ratios(values, den):
+    """Exact (numerator, denominator) pairs: values are integers over `den`."""
+    return [(v, den) for v in values]
+
+
+# Colour calibration copied from the Canon EOS 5D Mark III DNG in the corpus
+# (matrices x10000, AsShotNeutral x1000000), so develop() takes the same
+# dual-illuminant ForwardMatrix path as that camera.
+CANON_COLOR = [
+    (50721, SRATIONAL, ratios([7234, -1413, -600, -3631, 11150, 2850, -382, 1335, 6437], 10000)),
+    (50722, SRATIONAL, ratios([6722, -635, -963, -4287, 12460, 2028, -908, 2162, 5668], 10000)),
+    (50728, RATIONAL, ratios([606276, 1000000, 461885], 1000000)),  # AsShotNeutral
+    (50778, SHORT, [17]),  # CalibrationIlluminant1: standard light A
+    (50779, SHORT, [21]),  # CalibrationIlluminant2: D65
+    (50964, SRATIONAL, ratios([7868, 92, 1683, 2291, 8615, -906, 27, -4752, 12976], 10000)),
+    (50965, SRATIONAL, ratios([7637, 805, 1201, 2649, 9179, -1828, 137, -2456, 10570], 10000)),
+]
+FORWARD_MATRIX_TAGS = (50964, 50965)
+
+
+def bayer_dng(width=256, height=192, pattern=(0, 1, 1, 2), forward_matrix=True):
+    """forward_matrix=False drops ForwardMatrix1/2 (ColorMatrix-only colour)."""
     black, white = [512, 512, 512, 520], 16000
     # Slightly below black and above white, as real sensors read.
     px = b"".join(struct.pack("<H", sample(x, y, 480, 16200)) for y in range(height) for x in range(width))
@@ -88,6 +111,7 @@ def bayer_dng(width=256, height=192, pattern=(0, 1, 1, 2)):
         (50717, LONG, [white]),              # WhiteLevel
         (50829, LONG, [2, 4, height - 2, width - 4]),  # ActiveArea (top, left, bottom, right)
     ]
+    entries += [e for e in CANON_COLOR if forward_matrix or e[0] not in FORWARD_MATRIX_TAGS]
     return tiff(entries, px, strip_rows=64, row_bytes=2 * width)
 
 

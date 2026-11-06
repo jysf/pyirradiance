@@ -1,4 +1,4 @@
-"""API tests: unpack_bayer(out=), pack_bayer_4ch, SensorMeta field types.
+"""API tests: unpack_bayer(out=), pack_bayer_4ch, develop, SensorMeta field types.
 
 Usage: api.py <bayer.dng>
 """
@@ -135,6 +135,45 @@ def test_pack_out():
     print("  float plane:", raises(TypeError, irradiance.pack_bayer_4ch, ref.astype(np.float32), meta))
     mplane, mmeta = irradiance.unpack_bayer(synth.mono_dng())
     print("  monochrome:", raises(ValueError, irradiance.pack_bayer_4ch, mplane, mmeta))
+
+
+def flat_neutral(level=0.2):
+    """Synthetic RGGB file whose every pixel is a grey subject at `level`: each
+    site reads black + level * (white - black) * AsShotNeutral[colour]."""
+    d = synth.bayer_dng()
+    w, h = 256, 192
+    black, white = [512, 512, 512, 520], 16000
+    asn = [0.606276, 1.0, 0.461885]
+    colour = [0, 1, 1, 2]  # RGGB
+    px = bytearray()
+    for y in range(h):
+        for x in range(w):
+            i = (y % 2) * 2 + x % 2
+            v = black[i] + round(level * (white - black[i]) * asn[colour[i]])
+            px += v.to_bytes(2, "little")
+    return d[: len(d) - len(px)] + bytes(px)  # pixels are the file's tail
+
+
+def test_develop():
+    rgb, ver = irradiance.develop(synth.bayer_dng())
+    assert rgb.dtype == np.float32 and rgb.shape == (192, 256, 3) and ver == irradiance.DEVELOP_VERSION
+    assert rgb.min() >= 0 and rgb.max() <= 1 and not np.isnan(rgb).any()
+
+    # Grey in -> grey out: white balance and the colour matrix keep neutral neutral.
+    g = irradiance.develop(flat_neutral())[0][8:-8, 8:-8].reshape(-1, 3)
+    spread = (g.max(1) - g.min(1)).max()
+    print(f"  flat grey -> rgb {g.mean(0).round(4)}, max channel spread {spread:.5f}")
+    assert spread < 1e-3, spread
+
+    # The real file, when it carries ForwardMatrix (the Canon does).
+    try:
+        r = irradiance.develop(data)[0]
+        print(f"  {os.path.basename(sys.argv[1])}: {r.shape} range [{r.min():.3f}, {r.max():.3f}]")
+    except ValueError as e:
+        print(f"  {os.path.basename(sys.argv[1])}: ValueError: {e}")
+
+    print("  ColorMatrix only:", raises(ValueError, irradiance.develop, synth.bayer_dng(forward_matrix=False)))
+    print("  monochrome:", raises(ValueError, irradiance.develop, synth.mono_dng()))
 
 
 if __name__ == "__main__":

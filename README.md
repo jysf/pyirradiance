@@ -26,8 +26,12 @@ Canon EOS 5D Mark III and Nikon D300S DNGs (Bayer, 16-bit), Leica M Monochrom
 16-bit are untested here. The Leica M Monochrom Typ 246
 and Pentax K-3 III DNGs are lossless-JPEG compressed and are refused for now.
 
-`demosaic` output is **camera-space linear RGB**: no white balance, no colour
-matrix, no tone curve. Colour correction is still being built upstream.
+`develop` output is **linear sRGB** (white balance from `AsShotNeutral`, the
+DNG colour matrices, no tone curve or gamma), clipped to `[0, 1]`. It needs a
+`ForwardMatrix` in the file: upstream's `ColorMatrix`-only path currently gives
+a magenta cast, so files without one (e.g. the Nikon D300S DNG) raise
+`ValueError` from `develop` for now. `demosaic` output is **camera-space linear
+RGB**: raw values, no black/white levels, white balance or colour matrix.
 
 ## Install (from source)
 
@@ -57,8 +61,11 @@ plane, meta = irradiance.unpack_bayer(data)          # uint16[H, W], SensorMeta
 x = irradiance.pack_bayer_4ch(plane, meta)                  # uint16[4, H/2, W/2]
 x = irradiance.pack_bayer_4ch(plane, meta, normalize=True)  # float32, see below
 
-# Hamilton-Adams demosaic (upstream), camera-space linear RGB.
-rgb, version = irradiance.demosaic(data)              # float32[H, W, 3], DEVELOP_VERSION
+# Full develop: levels, Hamilton-Adams demosaic, white balance, colour matrix.
+rgb, version = irradiance.develop(data)               # float32[H, W, 3] linear sRGB, [0, 1]
+
+# Demosaic only: camera-space RGB, raw values / 65535.
+rgb, version = irradiance.demosaic(data)              # float32[H, W, 3]
 ```
 
 **`normalize=True`** returns `(v - black) / (white - black)` per channel in
@@ -102,7 +109,7 @@ main process. Catch it in `__getitem__` to skip bad files instead.
 | Hostile input -> `ValueError`, never a crash | `tests/smoke.py` (83 truncated/corrupted files), `tests/hostile_dims.py` (forged sizes up to 2^32 x 2^32, each in a subprocess), `tests/test_dataloader.py` (corrupt files mixed into a 4-worker `DataLoader`) |
 | Allocation bounded by input size | Before allocating, the decoder requires the pixel data to fit in the file; a forged header can't request more than ~8 samples per input byte |
 | Deterministic | Repeat decodes and 4 processes produce identical hashes |
-| Same bits on every platform | `tests/golden.py`: 23 output hashes on synthetic DNGs (all 4 CFA phases; unpack, pack, normalise, demosaic). Match verified on macOS arm64 (also on the real corpus), Linux arm64 and Linux x86_64 (Docker, synthetic files only). CI (`.github/workflows/ci.yml`) runs the same on ubuntu + macOS. |
+| Same bits on every platform | `tests/golden.py`: 27 output hashes on synthetic DNGs (all 4 CFA phases; unpack, pack, normalise, demosaic, develop). Match verified on macOS arm64 (also on the real corpus), Linux arm64 and Linux x86_64 (Docker, synthetic files only; `develop` hashes via CI only). CI (`.github/workflows/ci.yml`) runs the same on ubuntu + macOS. |
 
 ## Development
 

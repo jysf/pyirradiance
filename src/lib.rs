@@ -368,28 +368,84 @@ fn unpack_bayer<'py>(
     Ok((arr, meta(&sensor)))
 }
 
+/// A Bayer stage: full `[H, W]` mosaic in, interleaved u16 RGB out.
+type RgbStage = fn(&irradiance::ifd::Sensor, &[u16], &mut [u16]) -> Result<(), GlueError>;
+
+/// Unpack, run `stage`, and convert to float32 (`65535 -> 1.0`), GIL released.
+fn rgb_f32<'py>(
+    py: Python<'py>,
+    data: &[u8],
+    stage: RgbStage,
+) -> PyResult<(Bound<'py, PyArray3<f32>>, &'static str)> {
+    let (sensor, rgb) = py.allow_threads(|| -> Result<_, GlueError> {
+        let (sensor, plane) = unpack(data)?;
+        // plane_len() bounds the plane by the input size, so x3 can't overflow.
+        let mut rgb = vec![0u16; plane.len().saturating_mul(3)];
+        stage(&sensor, &plane, &mut rgb)?;
+        let mut f = vec![0f32; rgb.len()];
+        irradiance::tone::to_linear_f32_into(&rgb, &mut f)?;
+        Ok((sensor, f))
+    })?;
+    let arr = numpy::PyArray1::from_vec(py, rgb)
+        .reshape([sensor.height as usize, sensor.width as usize, 3])
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok((arr, irradiance::DEVELOP_VERSION))
+}
+
 /// Demosaic to camera-space linear RGB: `(float32[H, W, 3], DEVELOP_VERSION)`.
 ///
-/// Uncorrected (no white balance / colour matrix) — see STAGE-008.
+/// Raw sample values, no black/white levels, white balance or colour matrix.
 #[pyfunction]
 fn demosaic<'py>(
     py: Python<'py>,
     data: &[u8],
 ) -> PyResult<(Bound<'py, PyArray3<f32>>, &'static str)> {
-    let (sensor, rgb) = py
-        .allow_threads(|| -> Result<_, irradiance::Error> {
-            let (sensor, plane) = unpack(data)?;
-            let mut rgb = vec![0u16; plane.len() * 3];
-            irradiance::demosaic::demosaic_into(&sensor, &plane, &mut rgb)?;
-            let mut f = vec![0f32; rgb.len()];
-            irradiance::tone::to_linear_f32_into(&rgb, &mut f)?;
-            Ok((sensor, f))
-        })
-        .map_err(err)?;
-    let arr = numpy::PyArray1::from_vec(py, rgb)
-        .reshape([sensor.height as usize, sensor.width as usize, 3])
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok((arr, irradiance::DEVELOP_VERSION))
+    rgb_f32(py, data, |s, p, d| Ok(irradiance::demosaic::demosaic_into(s, p, d)?))
+}
+
+/// True if `m` is a 3x3 matrix upstream can use: 9 entries, no zero denominator.
+fn usable_matrix(m: Option<&Vec<irradiance::ifd::Rational>>) -> bool {
+    m.is_some_and(|m| m.len() == 9 && m.iter().all(|r| r.den != 0))
+}
+
+/// Refuse files whose colour would come from upstream's `ColorMatrix`-only
+/// path. At the pinned upstream commit that path applies `inv(ColorMatrix)`
+/// after white balance, which turns neutral grey magenta (Nikon D300S DNG:
+/// grey -> sRGB (1.0, 0.49, 0.78)); the `ForwardMatrix` path keeps grey at
+/// (1, 1, 1). Upstream takes the ForwardMatrix path when FM1 is usable and,
+/// if it interpolates between two calibrations (ColorMatrix2 present), FM2 is
+/// usable too. Drop this check once upstream fixes the ColorMatrix path.
+fn require_forward_matrix(sensor: &irradiance::ifd::Sensor) -> Result<(), GlueError> {
+    let fm1 = usable_matrix(sensor.forward_matrix_1.as_ref());
+    let fm2 = sensor.color_matrix_2.is_none() || usable_matrix(sensor.forward_matrix_2.as_ref());
+    if fm1 && fm2 {
+        Ok(())
+    } else {
+        Err(GlueError::Invalid(
+            "develop needs ForwardMatrix1 (and ForwardMatrix2 when ColorMatrix2 is present): \
+             colour from ColorMatrix alone is not supported yet; use demosaic() for \
+             camera-space RGB"
+                .into(),
+        ))
+    }
+}
+
+/// Develop to linear sRGB: `(float32[H, W, 3], DEVELOP_VERSION)`, in `[0, 1]`.
+///
+/// Per-site black/white levels, demosaic, then white balance (AsShotNeutral)
+/// and the DNG colour matrices (upstream `color::develop_color_into`).
+#[pyfunction]
+fn develop<'py>(
+    py: Python<'py>,
+    data: &[u8],
+) -> PyResult<(Bound<'py, PyArray3<f32>>, &'static str)> {
+    rgb_f32(py, data, |s, p, d| {
+        // A plane with no CFA gets upstream's own "nothing to demosaic" error.
+        if s.color_filter.is_some() {
+            require_forward_matrix(s)?;
+        }
+        Ok(irradiance::color::develop_color_into(s, p, d)?)
+    })
 }
 
 #[pymodule]
@@ -397,6 +453,7 @@ fn demosaic<'py>(
 fn py_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(unpack_bayer, m)?)?;
     m.add_function(wrap_pyfunction!(demosaic, m)?)?;
+    m.add_function(wrap_pyfunction!(develop, m)?)?;
     m.add_function(wrap_pyfunction!(pack_bayer_4ch, m)?)?;
     m.add_class::<SensorMeta>()?;
     m.add("DEVELOP_VERSION", irradiance::DEVELOP_VERSION)?;

@@ -58,7 +58,7 @@ def forge(data, width, height):
 CHILD = """
 import sys, irradiance
 data = sys.stdin.buffer.read()
-for fn in (irradiance.unpack_bayer, irradiance.demosaic):
+for fn in (irradiance.unpack_bayer, irradiance.demosaic, irradiance.develop):
     try:
         fn(data)
     except ValueError as e:
