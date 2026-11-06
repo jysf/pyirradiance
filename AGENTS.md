@@ -12,6 +12,8 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
 - CI: `ci.yml` (Linux x86_64 + arm64, macOS arm64; weekly canary vs upstream main),
   `wheels.yml` (tested wheels per platform; tag `vX.Y.Z` -> GitHub release). Upstream pin:
   `.github/irradiance-pin`.
+- Released: v0.0.1 (GitHub pre-release, 3 tested wheels). Next release = bump `version` in
+  pyproject.toml + Cargo.toml, then tag `vX.Y.Z`.
 - `src/lib.rs`: `unpack_bayer(bytes, out=None) -> (uint16[H,W], SensorMeta)`,
   `pack_bayer_4ch(plane, meta, out=None, normalize=False) -> [4,H/2,W/2]`,
   `demosaic(bytes) -> (float32[H,W,3], DEVELOP_VERSION)` (camera-space RGB, raw values),
