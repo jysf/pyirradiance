@@ -137,10 +137,10 @@ def test_pack_out():
     print("  monochrome:", raises(ValueError, irradiance.pack_bayer_4ch, mplane, mmeta))
 
 
-def flat_neutral(level=0.2):
+def flat_neutral(level=0.2, forward_matrix=True):
     """Synthetic RGGB file whose every pixel is a grey subject at `level`: each
     site reads black + level * (white - black) * AsShotNeutral[colour]."""
-    d = synth.bayer_dng()
+    d = synth.bayer_dng(forward_matrix=forward_matrix)
     w, h = 256, 192
     black, white = [512, 512, 512, 520], 16000
     asn = [0.606276, 1.0, 0.461885]
@@ -159,11 +159,15 @@ def test_develop():
     assert rgb.dtype == np.float32 and rgb.shape == (192, 256, 3) and ver == irradiance.DEVELOP_VERSION
     assert rgb.min() >= 0 and rgb.max() <= 1 and not np.isnan(rgb).any()
 
-    # Grey in -> grey out: white balance and the colour matrix keep neutral neutral.
-    g = irradiance.develop(flat_neutral())[0][8:-8, 8:-8].reshape(-1, 3)
-    spread = (g.max(1) - g.min(1)).max()
-    print(f"  flat grey -> rgb {g.mean(0).round(4)}, max channel spread {spread:.5f}")
-    assert spread < 1e-3, spread
+    # Grey in -> grey out: white balance and the colour matrix keep neutral
+    # neutral, on both upstream paths (ForwardMatrix, and ColorMatrix only,
+    # which turned grey magenta before upstream DEC-038).
+    for fm in (True, False):
+        g = irradiance.develop(flat_neutral(forward_matrix=fm))[0][8:-8, 8:-8].reshape(-1, 3)
+        spread = (g.max(1) - g.min(1)).max()
+        path = "ForwardMatrix" if fm else "ColorMatrix only"
+        print(f"  flat grey ({path}) -> rgb {g.mean(0).round(4)}, max channel spread {spread:.5f}")
+        assert spread < 1e-3, spread
 
     # The real file, when it carries ForwardMatrix (the Canon does).
     try:
@@ -172,7 +176,6 @@ def test_develop():
     except ValueError as e:
         print(f"  {os.path.basename(sys.argv[1])}: ValueError: {e}")
 
-    print("  ColorMatrix only:", raises(ValueError, irradiance.develop, synth.bayer_dng(forward_matrix=False)))
     print("  monochrome:", raises(ValueError, irradiance.develop, synth.mono_dng()))
 
 

@@ -27,11 +27,10 @@ Canon EOS 5D Mark III and Nikon D300S DNGs (Bayer, 16-bit), Leica M Monochrom
 and Pentax K-3 III DNGs are lossless-JPEG compressed and are refused for now.
 
 `develop` output is **linear sRGB** (white balance from `AsShotNeutral`, the
-DNG colour matrices, no tone curve or gamma), clipped to `[0, 1]`. It needs a
-`ForwardMatrix` in the file: upstream's `ColorMatrix`-only path currently gives
-a magenta cast, so files without one (e.g. the Nikon D300S DNG) raise
-`ValueError` from `develop` for now. `demosaic` output is **camera-space linear
-RGB**: raw values, no black/white levels, white balance or colour matrix.
+DNG colour matrices, no tone curve or gamma), clipped to `[0, 1]`. Files with a
+`ForwardMatrix` (Canon 5D3) and with `ColorMatrix` only (Nikon D300S) both work.
+`demosaic` output is **camera-space linear RGB**: raw values, no black/white
+levels, white balance or colour matrix.
 
 ## Install (from source)
 
@@ -109,7 +108,7 @@ main process. Catch it in `__getitem__` to skip bad files instead.
 | Hostile input -> `ValueError`, never a crash | `tests/smoke.py` (83 truncated/corrupted files), `tests/hostile_dims.py` (forged sizes up to 2^32 x 2^32, each in a subprocess), `tests/test_dataloader.py` (corrupt files mixed into a 4-worker `DataLoader`) |
 | Allocation bounded by input size | Before allocating, the decoder requires the pixel data to fit in the file; a forged header can't request more than ~8 samples per input byte |
 | Deterministic | Repeat decodes and 4 processes produce identical hashes |
-| Same bits on every platform | `tests/golden.py`: 27 output hashes on synthetic DNGs (all 4 CFA phases; unpack, pack, normalise, demosaic, develop). Match verified on macOS arm64 (also on the real corpus), Linux arm64 and Linux x86_64 (Docker, synthetic files only; `develop` hashes via CI only). CI (`.github/workflows/ci.yml`) runs the same on ubuntu + macOS. |
+| Same bits on every platform | `tests/golden.py`: 29 output hashes on synthetic DNGs (all 4 CFA phases; unpack, pack, normalise, demosaic, develop on both colour paths). Match verified on macOS arm64 (also on the real corpus), Linux arm64 and Linux x86_64 (Docker, synthetic files only; `develop` hashes via CI only). CI (`.github/workflows/ci.yml`) runs the same on ubuntu + macOS. |
 
 ## Development
 

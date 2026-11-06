@@ -16,7 +16,7 @@ jobs:
     env:
       # Pinned upstream commit; bump deliberately. Replace the path dep with a
       # crates.io version once irradiance 0.2.0 ships (see AGENTS.md).
-      IRRADIANCE_REV: 0914d4b83cad5f69a0fb62b0722a00571f0760c3
+      IRRADIANCE_REV: 6d0d46ad24bc72dbc2b8124fedda4c48fc449043
     steps:
       - uses: actions/checkout@v4
 

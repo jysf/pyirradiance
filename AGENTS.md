@@ -14,9 +14,8 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
   `demosaic(bytes) -> (float32[H,W,3], DEVELOP_VERSION)` (camera-space RGB, raw values),
   `develop(bytes) -> (float32[H,W,3], DEVELOP_VERSION)` (linear sRGB via upstream
   `color::develop_color_into`, clipped to [0,1]), GIL released.
-- `develop` refuses files without a usable ForwardMatrix (`require_forward_matrix()`):
-  upstream's ColorMatrix-only path applies `inv(CM)` after white balance, so grey comes out
-  magenta (Nikon D300S: grey -> (1.0, 0.49, 0.78)). Needs reporting upstream; drop the check when fixed.
+- `develop` covers both upstream colour paths (ForwardMatrix, and ColorMatrix only, fixed
+  upstream in DEC-038 / DEVELOP_VERSION 2); `tests/api.py` checks grey stays grey on each.
 - `tests/smoke.py <dng>`: real file, 83 hostile inputs, determinism, 4-process agreement.
 - `tests/hostile_dims.py <dng>`: forged width/height (6 cases, each in a subprocess) must
   raise `ValueError`, not panic/abort.
@@ -25,7 +24,7 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
   + 6 corrupt files; epoch completes, worker results match main process, uncaught
   `ValueError` re-raises in the main process (no dead workers).
 - `tests/synth.py <dir>`: writes synthetic `bayer.dng` + `mono.dng` (pure-integer, portable).
-- `tests/golden.py [--update]`: 27 output hashes on synthetic DNGs vs `tests/golden.json`
+- `tests/golden.py [--update]`: 29 output hashes on synthetic DNGs vs `tests/golden.json`
   (generated on macOS arm64); matched on Linux arm64 + x86_64 via `tests/linux_docker.sh`.
 - `tests/ci.sh`: clippy + cargo test + build + every test on synthetic DNGs (what CI runs).
 - The `<dng>` scripts pass on `~/PSeven/experiments/crustimg_redo_plus/images/CANON-EOS-5D-MARK-III/5G4A9394.DNG`.
@@ -48,8 +47,6 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
    upstream SHA) and Docker-based Linux runs.
 
 ## Next
-- Upstream ColorMatrix-only colour bug (see State): once fixed, remove
-  `require_forward_matrix()` and add a CM-only golden.
 - When irradiance 0.2.0 ships (STAGE-010): pin it from crates.io, swap `plane_len()` for
   `plane::validate`, map `ErrorKind` (SPEC-040) to exception subclasses if it lands.
 

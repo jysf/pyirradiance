@@ -34,6 +34,10 @@ def compute():
         got[f"{name}/pack_normalized"] = sha(irradiance.pack_bayer_4ch(plane, meta, normalize=True).tobytes())
         got[f"{name}/demosaic"] = sha(irradiance.demosaic(data)[0].tobytes())
         got[f"{name}/develop"] = sha(irradiance.develop(data)[0].tobytes())
+    # ColorMatrix-only colour path (no ForwardMatrix), upstream DEC-038.
+    cm_only = synth.bayer_dng(forward_matrix=False)
+    got["RGGB_cm_only.dng"] = sha(cm_only)
+    got["RGGB_cm_only/develop"] = sha(irradiance.develop(cm_only)[0].tobytes())
     return got
 
 

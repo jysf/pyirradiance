@@ -403,33 +403,6 @@ fn demosaic<'py>(
     rgb_f32(py, data, |s, p, d| Ok(irradiance::demosaic::demosaic_into(s, p, d)?))
 }
 
-/// True if `m` is a 3x3 matrix upstream can use: 9 entries, no zero denominator.
-fn usable_matrix(m: Option<&Vec<irradiance::ifd::Rational>>) -> bool {
-    m.is_some_and(|m| m.len() == 9 && m.iter().all(|r| r.den != 0))
-}
-
-/// Refuse files whose colour would come from upstream's `ColorMatrix`-only
-/// path. At the pinned upstream commit that path applies `inv(ColorMatrix)`
-/// after white balance, which turns neutral grey magenta (Nikon D300S DNG:
-/// grey -> sRGB (1.0, 0.49, 0.78)); the `ForwardMatrix` path keeps grey at
-/// (1, 1, 1). Upstream takes the ForwardMatrix path when FM1 is usable and,
-/// if it interpolates between two calibrations (ColorMatrix2 present), FM2 is
-/// usable too. Drop this check once upstream fixes the ColorMatrix path.
-fn require_forward_matrix(sensor: &irradiance::ifd::Sensor) -> Result<(), GlueError> {
-    let fm1 = usable_matrix(sensor.forward_matrix_1.as_ref());
-    let fm2 = sensor.color_matrix_2.is_none() || usable_matrix(sensor.forward_matrix_2.as_ref());
-    if fm1 && fm2 {
-        Ok(())
-    } else {
-        Err(GlueError::Invalid(
-            "develop needs ForwardMatrix1 (and ForwardMatrix2 when ColorMatrix2 is present): \
-             colour from ColorMatrix alone is not supported yet; use demosaic() for \
-             camera-space RGB"
-                .into(),
-        ))
-    }
-}
-
 /// Develop to linear sRGB: `(float32[H, W, 3], DEVELOP_VERSION)`, in `[0, 1]`.
 ///
 /// Per-site black/white levels, demosaic, then white balance (AsShotNeutral)
@@ -439,13 +412,7 @@ fn develop<'py>(
     py: Python<'py>,
     data: &[u8],
 ) -> PyResult<(Bound<'py, PyArray3<f32>>, &'static str)> {
-    rgb_f32(py, data, |s, p, d| {
-        // A plane with no CFA gets upstream's own "nothing to demosaic" error.
-        if s.color_filter.is_some() {
-            require_forward_matrix(s)?;
-        }
-        Ok(irradiance::color::develop_color_into(s, p, d)?)
-    })
+    rgb_f32(py, data, |s, p, d| Ok(irradiance::color::develop_color_into(s, p, d)?))
 }
 
 #[pymodule]
