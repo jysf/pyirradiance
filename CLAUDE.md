@@ -34,7 +34,7 @@ There is no pytest suite yet; the `tests/` files are scripts. `smoke.py`, `hosti
 
 ## Architecture
 
-- **Naming is split three ways**: the distribution is `pyirradiance` (pyproject), the Rust cdylib is `irradiance_py` (Cargo `[lib]`), and the Python import name is `irradiance` (`[tool.maturin] module-name` and `#[pyo3(name = "irradiance")]`). Keep these consistent when touching packaging.
+- **Naming**: the PyPI distribution and the Python import name are both `irradiance` (pyproject `name`, `[tool.maturin] module-name`, `#[pyo3(name = "irradiance")]`). The Cargo package stays `pyirradiance` (it can't share a name with its `irradiance` dependency) and the cdylib is `irradiance_py` (Cargo `[lib]`). The repo is `jysf/pyirradiance`. Keep these consistent when touching packaging.
 - **Standalone Cargo workspace**: `Cargo.toml` declares an empty `[workspace]` so this crate doesn't join the parent repo's workspace. Don't remove it.
 - **Pure-Rust kernels live in their own modules** (`src/pack.rs`: Bayer -> 4-channel packing), with no PyO3 types, so `cargo test --lib` covers them.
 - **All glue lives in `src/lib.rs`**. Every entry point follows the same shape:

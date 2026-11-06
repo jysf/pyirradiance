@@ -3,7 +3,7 @@ requires = ["maturin>=1.7,<2"]
 build-backend = "maturin"
 
 [project]
-name = "pyirradiance"
+name = "irradiance"
 version = "0.0.1"
 requires-python = ">=3.9"
 license = "MIT OR Apache-2.0"

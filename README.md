@@ -39,7 +39,8 @@ uv venv .venv && uv pip install maturin numpy
 .venv/bin/maturin develop --release
 ```
 
-The distribution is `pyirradiance`; the import name is `irradiance`.
+The package is `irradiance` both to install and to import (this repo is
+`pyirradiance`; not on PyPI yet).
 
 ## API
 
