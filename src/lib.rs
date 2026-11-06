@@ -71,7 +71,8 @@ struct SensorMeta {
     black_level: Option<u32>,
     white_level: Option<u32>,
     /// CFA colour indices row-major (0=R,1=G,2=B), e.g. [0,1,1,2] for RGGB.
-    cfa_pattern: Option<Vec<u8>>,
+    /// `u16`, not `u8`: PyO3 turns `Vec<u8>` into `bytes`, we want `list[int]`.
+    cfa_pattern: Option<Vec<u16>>,
     /// `CFARepeatPatternDim` as `(rows, cols)`.
     cfa_repeat_dim: Option<(u32, u32)>,
     /// `CFAPlaneColor`: colour of each pattern index (DNG default `[0, 1, 2]`).
@@ -170,7 +171,10 @@ fn meta(s: &irradiance::ifd::Sensor) -> SensorMeta {
         bits_per_sample: s.bits_per_sample,
         black_level: s.black_level,
         white_level: s.white_level,
-        cfa_pattern: s.color_filter.as_ref().map(|c| c.pattern.clone()),
+        cfa_pattern: s
+            .color_filter
+            .as_ref()
+            .map(|c| c.pattern.iter().map(|&v| u16::from(v)).collect()),
         cfa_repeat_dim: s.color_filter.as_ref().map(|c| (c.repeat_dim[0], c.repeat_dim[1])),
         cfa_plane_color: s
             .color_filter
@@ -261,13 +265,11 @@ fn pack_bayer_4ch<'py>(
     let (Some(pattern), Some((rd, cd))) = (&m.cfa_pattern, m.cfa_repeat_dim) else {
         return Err(invalid("no CFA pattern: this is not a Bayer plane".into()));
     };
-    let plane_color: Vec<u8> = m
-        .cfa_plane_color
-        .iter()
-        .flatten()
-        .map(|&v| u8::try_from(v).unwrap_or(u8::MAX))
-        .collect();
-    let phase = pack::Phase::from_cfa([rd, cd], pattern, &plane_color).map_err(invalid)?;
+    // Back to the u8 indices upstream reads; every value came from a u8, and
+    // u8::MAX is an unknown colour that from_cfa rejects anyway.
+    let to_u8 = |v: &[u16]| -> Vec<u8> { v.iter().map(|&x| u8::try_from(x).unwrap_or(u8::MAX)).collect() };
+    let plane_color = to_u8(m.cfa_plane_color.as_deref().unwrap_or(&[]));
+    let phase = pack::Phase::from_cfa([rd, cd], &to_u8(pattern), &plane_color).map_err(invalid)?;
     let (w, out_shape) = (want[1], [4, want[0] / 2, want[1] / 2]);
 
     let src_ro = plane

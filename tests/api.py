@@ -1,4 +1,4 @@
-"""API tests: unpack_bayer(out=), pack_bayer_4ch.
+"""API tests: unpack_bayer(out=), pack_bayer_4ch, SensorMeta field types.
 
 Usage: api.py <bayer.dng>
 """
@@ -57,6 +57,14 @@ def test_out():
             irradiance.unpack_bayer(data, out=t.numpy())
             assert np.array_equal(t.numpy(), ref)
             print("  torch tensor .numpy() view: ok")
+
+
+def test_meta_types():
+    assert meta.cfa_pattern == [0, 1, 1, 2] and type(meta.cfa_pattern) is list
+    assert all(type(v) is int for v in meta.cfa_pattern)
+    assert type(meta.cfa_plane_color) is list and type(meta.black_levels) is list
+    print(f"  cfa_pattern={meta.cfa_pattern} plane_color={meta.cfa_plane_color} "
+          f"black_levels={meta.black_levels} active_area={meta.active_area}")
 
 
 def forge_cfa(pattern):

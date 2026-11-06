@@ -29,7 +29,7 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
    4 phases (`src/pack.rs`); normalise = per-site BlackLevel (origin = ActiveArea) to
    WhiteLevel, float32, unclipped. Meta gained `cfa_repeat_dim`, `cfa_plane_color`,
    `black_levels`, `black_level_repeat_dim`, `active_area`.
-4. `meta.cfa_pattern` should be a `list[int]`, not `bytes`.
+4. ~~`meta.cfa_pattern` should be a `list[int]`, not `bytes`.~~ Done (stored as `u16`).
 5. `tests/test_dataloader.py`: torch `DataLoader(num_workers=4)` over the corpus plus a
    corrupt file mixed in; assert the run completes and the bad file surfaces as an exception.
 6. README with honest scope: uncompressed Bayer DNG (+ mono) only; compressed
