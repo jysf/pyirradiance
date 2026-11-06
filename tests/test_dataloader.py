@@ -1,6 +1,10 @@
 """Gap 5: torch DataLoader(num_workers=4) over the corpus with corrupt files mixed in.
 
-Usage: test_dataloader.py <corpus_dir>   (e.g. ~/PSeven/experiments/crustimg_redo_plus/images)
+Usage: test_dataloader.py <bayer.dng> [file_or_dir ...]
+  <bayer.dng> must decode (it is also the base for the corrupt files); extra
+  files, or directories searched one level deep for *.DNG/*.PEF, join the epoch.
+  Local: test_dataloader.py <canon.dng> ~/PSeven/experiments/crustimg_redo_plus/images
+  CI:    test_dataloader.py <synth>/bayer.dng <synth>/mono.dng
 
 Proves the "never kills a worker" claim end to end:
 1. A dataset that catches ValueError finishes the whole epoch; every corrupt
@@ -23,9 +27,6 @@ from torch.utils.data import DataLoader, Dataset
 
 import irradiance
 from hostile_dims import forge
-
-CANON = "CANON-EOS-5D-MARK-III/5G4A9394.DNG"
-
 
 def digest(a):
     return hashlib.sha256(a.tobytes()).hexdigest()[:16]
@@ -78,11 +79,19 @@ def make_corrupt(tmp, canon_bytes):
 
 
 def main():
-    corpus = os.path.expanduser(sys.argv[1])
-    real = sorted(glob.glob(os.path.join(corpus, "*", "*.DNG")) + glob.glob(os.path.join(corpus, "*", "*.PEF")))
-    canon = os.path.join(corpus, CANON)
-    assert canon in real, f"{CANON} missing from corpus"
+    args = [os.path.abspath(os.path.expanduser(a)) for a in sys.argv[1:]]
+    canon = args[0]  # the known-good Bayer file
+    real = {canon}
+    for a in args[1:]:
+        if os.path.isdir(a):
+            real.update(glob.glob(os.path.join(a, "*", "*.DNG")) + glob.glob(os.path.join(a, "*", "*.PEF")))
+        else:
+            real.add(a)
+    real = sorted(real)
     canon_bytes = open(canon, "rb").read()
+    plane, meta = irradiance.unpack_bayer(canon_bytes)
+    assert meta.cfa_pattern, f"{canon} is not a Bayer file"
+    canon_shape = (4, plane.shape[0] // 2, plane.shape[1] // 2)
 
     with tempfile.TemporaryDirectory() as tmp:
         corrupt = make_corrupt(tmp, canon_bytes)
@@ -101,12 +110,13 @@ def main():
             assert seen[p] == expected[p], f"worker result differs from main process for {p}"
         for p in corrupt:
             assert seen[p]["error"], f"{os.path.basename(p)} decoded but should have raised"
-        assert seen[canon]["error"] is None and seen[canon]["shape"] == (4, 1975, 2960)
+        assert seen[canon]["error"] is None and seen[canon]["shape"] == canon_shape
 
         print(f"epoch: {len(paths)} files, 4 workers, completed")
         for p in paths:
             r = seen[p]
-            label = os.path.relpath(p, corpus) if p.startswith(corpus) else "corrupt/" + os.path.basename(p)
+            parent = os.path.basename(os.path.dirname(p))
+            label = ("corrupt" if p in corrupt else parent) + "/" + os.path.basename(p)
             print(f"  {label:45s} " + (f"ok {r['shape']} {r['digest']}" if r["error"] is None
                                          else f"ValueError: {r['error'][:70]}"))
 

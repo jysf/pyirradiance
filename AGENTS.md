@@ -8,7 +8,7 @@ A crash-proof, deterministic, GIL-free RAW dataloader primitive for PyTorch/ML:
 a truncated or hostile file raises `ValueError`, never kills a worker; output is
 bit-identical across OS/arch; wheel is small, no C++ toolchain.
 
-## State (prototype, gaps 1-5 done; macOS arm64 only, no CI yet)
+## State (prototype, gaps 1-6 done; CI written but repo not on GitHub yet)
 - `src/lib.rs`: `unpack_bayer(bytes, out=None) -> (uint16[H,W], SensorMeta)`,
   `pack_bayer_4ch(plane, meta, out=None, normalize=False) -> [4,H/2,W/2]`,
   `demosaic(bytes) -> (float32[H,W,3], DEVELOP_VERSION)` (uncorrected camera-space
@@ -20,6 +20,10 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
 - `tests/test_dataloader.py <corpus_dir>`: torch `DataLoader(num_workers=4)` over the corpus
   + 6 corrupt files; epoch completes, worker results match main process, uncaught
   `ValueError` re-raises in the main process (no dead workers).
+- `tests/synth.py <dir>`: writes synthetic `bayer.dng` + `mono.dng` (pure-integer, portable).
+- `tests/golden.py [--update]`: 23 output hashes on synthetic DNGs vs `tests/golden.json`
+  (generated on macOS arm64); matched on Linux arm64 + x86_64 via `tests/linux_docker.sh`.
+- `tests/ci.sh`: clippy + cargo test + build + every test on synthetic DNGs (what CI runs).
 - The `<dng>` scripts pass on `~/PSeven/experiments/crustimg_redo_plus/images/CANON-EOS-5D-MARK-III/5G4A9394.DNG`.
 - Build: `uv venv .venv && uv pip install maturin numpy torch && .venv/bin/maturin develop --release`
   (torch is only for `tests/test_dataloader.py`).
@@ -36,12 +40,19 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
    `black_levels`, `black_level_repeat_dim`, `active_area`.
 4. ~~`meta.cfa_pattern` should be a `list[int]`, not `bytes`.~~ Done (stored as `u16`).
 5. ~~`tests/test_dataloader.py`~~ Done (see State).
-6. README with honest scope: uncompressed Bayer DNG (+ mono) only; compressed
-   DNG/lossless-JPEG (Pentax, etc.) returns `ValueError`; demosaic output is uncorrected.
+6. ~~README~~ Done. Also CI (`.github/workflows/ci.yml`, ubuntu + macOS, pinned
+   upstream SHA) and Docker-based Linux runs.
+
+## Next
+- Push this repo to GitHub so CI actually runs (not done: needs the owner's decision).
+- When irradiance 0.2.0 ships (STAGE-010): pin it from crates.io, swap `plane_len()` for
+  `plane::validate`, map `ErrorKind` (SPEC-040) to exception subclasses if it lands.
+- Pick a licence (README says "not yet chosen").
 
 ## Rules
 - No unsafe of our own beyond what PyO3/numpy require; no panics (`unwrap`/indexing) in glue.
-- Don't claim bit-identical across arch until verified on a second arch (CI: linux x86_64 + macOS arm64).
+- Bit-identical across arch is verified only for the synthetic golden set (`tests/golden.py`);
+  keep claims scoped to that until real-file hashes are compared on a second arch.
 - Don't publish to PyPI; the crate dep must move from the path to a crates.io version first
   (needs an `irradiance` release containing `demosaic`).
 - Corpus: `~/PSeven/experiments/crustimg_redo_plus/images`. Decodes today: Canon 5D3 DNG and

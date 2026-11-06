@@ -8,10 +8,10 @@ import sys
 import numpy as np
 import irradiance
 
-from hostile_dims import ifd_entries  # same tests/ dir
+import synth  # same tests/ dir
+from hostile_dims import ifd_entries
 
 TAG_CFA_PATTERN = 33422
-MONO = os.path.expanduser("~/PSeven/experiments/crustimg_redo_plus/images/LEICA-M-MONOCHROM/L1000622.DNG")
 
 data = open(os.path.expanduser(sys.argv[1]), "rb").read()
 ref, meta = irradiance.unpack_bayer(data)
@@ -133,9 +133,8 @@ def test_pack_out():
     print("  cropped plane:", raises(ValueError, irradiance.pack_bayer_4ch, ref[1:, 1:].copy(), meta))
     print("  Fortran plane:", raises(ValueError, irradiance.pack_bayer_4ch, np.asfortranarray(ref), meta))
     print("  float plane:", raises(TypeError, irradiance.pack_bayer_4ch, ref.astype(np.float32), meta))
-    if os.path.exists(MONO):
-        mplane, mmeta = irradiance.unpack_bayer(open(MONO, "rb").read())
-        print("  monochrome:", raises(ValueError, irradiance.pack_bayer_4ch, mplane, mmeta))
+    mplane, mmeta = irradiance.unpack_bayer(synth.mono_dng())
+    print("  monochrome:", raises(ValueError, irradiance.pack_bayer_4ch, mplane, mmeta))
 
 
 if __name__ == "__main__":

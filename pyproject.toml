@@ -10,3 +10,4 @@ dependencies = ["numpy"]
 
 [tool.maturin]
 module-name = "irradiance"
+features = ["extension-module"]

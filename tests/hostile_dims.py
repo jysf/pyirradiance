@@ -22,10 +22,13 @@ def ifd_entries(data):
     todo, seen = [struct.unpack_from(bo + "I", data, 4)[0]], set()
     while todo:
         off = todo.pop()
-        if off in seen or off + 2 > len(data):
+        # Offset 0 is the "no next IFD" terminator, not a directory.
+        if off == 0 or off in seen or off + 2 > len(data):
             continue
         seen.add(off)
         (n,) = struct.unpack_from(bo + "H", data, off)
+        if off + 2 + 12 * n + 4 > len(data):
+            continue
         for i in range(n):
             e = off + 2 + 12 * i
             tag, typ, count = struct.unpack_from(bo + "HHI", data, e)

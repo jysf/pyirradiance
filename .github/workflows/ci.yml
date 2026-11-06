@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    # Two OS x two arch: the golden step is the cross-arch determinism check
+    # (tests/golden.json was generated on macOS arm64).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # Pinned upstream commit; bump deliberately. Replace the path dep with a
+      # crates.io version once irradiance 0.2.0 ships (see AGENTS.md).
+      IRRADIANCE_REV: 0914d4b83cad5f69a0fb62b0722a00571f0760c3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out irradiance where Cargo.toml's path dep expects it
+        run: |
+          dest="$GITHUB_WORKSPACE/../../crustimg_redo_plus/irradiance"
+          git clone --quiet https://github.com/jysf/irradiance.git "$dest"
+          git -C "$dest" checkout --quiet --detach "$IRRADIANCE_REV"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python deps
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q maturin numpy
+          if [ "$RUNNER_OS" = Linux ]; then
+            # CPU wheel: the default Linux torch wheel pulls in CUDA (~GBs).
+            .venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+          else
+            .venv/bin/pip install -q torch
+          fi
+
+      - name: Lint, build, test (synthetic DNGs)
+        run: tests/ci.sh "$RUNNER_TEMP/synth"

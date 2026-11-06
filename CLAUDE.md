@@ -28,6 +28,8 @@ DNG=~/PSeven/experiments/crustimg_redo_plus/images/CANON-EOS-5D-MARK-III/5G4A939
 .venv/bin/python tests/test_dataloader.py ~/PSeven/experiments/crustimg_redo_plus/images
 ```
 
+`tests/ci.sh` runs everything on synthetic DNGs (no corpus needed); `tests/linux_docker.sh linux/amd64` runs it in a Linux container. After an intentional output change, regenerate goldens with `.venv/bin/python tests/golden.py --update` and say why in the commit.
+
 There is no pytest suite yet; the `tests/` files are scripts. `smoke.py`, `hostile_dims.py` and `api.py` take the DNG path as `argv[1]`; `test_dataloader.py` takes the corpus directory. Run all of them after each change.
 
 ## Architecture
@@ -44,3 +46,4 @@ There is no pytest suite yet; the `tests/` files are scripts. `smoke.py`, `hosti
 - **Pipeline over the upstream crate**: `Container::parse` -> `container.sensor()` (metadata) -> `plane::unpack_into` (u16 Bayer plane) -> `demosaic::demosaic_into` (u16 RGB) -> `tone::to_linear_f32_into` (f32). The `_into` APIs write into caller-allocated buffers, which is what makes the `out=` and allocation-guard gaps possible without changing upstream.
 - **Upstream crate is read-only**: `irradiance` is a path dependency at `../../crustimg_redo_plus/irradiance`. If its API blocks you (e.g. no pre-validation size helper), work around it here and record the issue as a note; don't edit it.
 - `python/` is currently empty (no pure-Python layer yet).
+- **CI** clones upstream at a pinned SHA (`IRRADIANCE_REV` in `.github/workflows/ci.yml`) into the path the Cargo path dep expects. `extension-module` is a Cargo feature enabled only by maturin, so `cargo test` links on Linux.

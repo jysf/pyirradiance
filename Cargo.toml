@@ -13,5 +13,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 irradiance = { path = "../../crustimg_redo_plus/irradiance" }
-pyo3 = { version = "0.23", features = ["extension-module", "abi3-py39"] }
+pyo3 = { version = "0.23", features = ["abi3-py39"] }
 numpy = "0.23"
+
+[features]
+# Enabled by maturin (pyproject.toml), off for `cargo test`: extension-module
+# leaves libpython unlinked, which breaks linking the test binary on Linux.
+extension-module = ["pyo3/extension-module"]
