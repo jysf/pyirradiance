@@ -112,6 +112,21 @@ class RawDataset(torch.utils.data.Dataset):
 A corrupt file raises `ValueError` in the worker, which torch re-raises in the
 main process. Catch it in `__getitem__` to skip bad files instead.
 
+## Performance vs rawpy
+
+Compared with [rawpy](https://github.com/letmaik/rawpy) (LibRaw) on the same
+DNGs, on an Apple M4 Pro ([full results and method](https://github.com/jysf/pyirradiance/blob/main/bench/README.md)):
+
+| | irradiance | rawpy |
+|---|---|---|
+| Raw to normalised `[4, H/2, W/2]` tensor, 23 MP | **11 ms** | 26 ms |
+| Same, 8 threads | **520 files/s** | 238 files/s |
+| Full develop to linear sRGB, 23 MP | 602 ms | **477 ms** |
+| 212 corrupt files: crashes / hangs | 0 / 0 | 0 / 0 |
+| Peak memory, worst corrupt file | 993 MB | **488 MB** |
+| Wheel size | **0.3 MB** | 2-3 MB |
+| Formats | uncompressed DNG | nearly all RAW |
+
 ## Guarantees and how they're checked
 
 | Claim | Evidence |
@@ -123,13 +138,18 @@ main process. Catch it in `__getitem__` to skip bad files instead.
 
 ## Development
 
+Tasks are in the `justfile` (`just` lists them):
+
 ```sh
-tests/ci.sh                    # clippy, cargo test, build, all tests on synthetic DNGs
-tests/linux_docker.sh linux/amd64   # the same inside a Linux container
+just setup        # .venv with maturin, numpy, torch, rawpy
+just build        # build the extension into .venv
+just ci           # clippy, cargo test, build, all tests on synthetic DNGs (what CI runs)
+just test-corpus  # the tests on real camera files
+just docker       # the CI tests inside a Linux container
+just bench        # irradiance vs rawpy (bench/README.md)
 ```
 
-`tests/ci.sh` needs `torch` in the venv (`uv pip install torch`). The scripts
-in `tests/` also run on real files; see `CLAUDE.md`.
+Releasing is `just release X.Y.Z`; see [RELEASING.md](https://github.com/jysf/pyirradiance/blob/main/RELEASING.md).
 
 ## License
 

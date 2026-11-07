@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
+The `justfile` wraps all of these (`just` lists recipes: `setup`, `build`, `check`, `ci`, `test-corpus`, `docker`, `golden-update`, `bench`, `release`). Releases: `RELEASING.md` (`just release X.Y.Z`; never upload to PyPI by hand).
+
 ```bash
 # One-time setup
 uv venv .venv && uv pip install maturin numpy torch   # torch: dataloader test only

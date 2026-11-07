@@ -13,8 +13,8 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
   `wheels.yml` (tested wheels per platform; tag `vX.Y.Z` -> GitHub release). Upstream pin:
   `.github/irradiance-pin`.
 - Released: v0.0.1 (GitHub only), v0.0.2+ on PyPI as `irradiance` (wheels only, trusted
-  publishing from `wheels.yml`, environment `pypi`). Next release = bump `version` in
-  pyproject.toml + Cargo.toml, then tag `vX.Y.Z`; the tag publishes to PyPI then GitHub.
+  publishing from `wheels.yml`, environment `pypi`). How to release: `RELEASING.md`
+  (`just release X.Y.Z`: checks, bumps, tags; the tag publishes to PyPI then GitHub).
 - `src/lib.rs`: `unpack_bayer(bytes, out=None) -> (uint16[H,W], SensorMeta)`,
   `pack_bayer_4ch(plane, meta, out=None, normalize=False) -> [4,H/2,W/2]`,
   `demosaic(bytes) -> (float32[H,W,3], DEVELOP_VERSION)` (camera-space RGB, raw values),
