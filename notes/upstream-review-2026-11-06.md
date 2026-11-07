@@ -1,5 +1,10 @@
 # irradiance: findings from the Python bindings' rawpy benchmark
 
+**Status 2026-11-07:** P0 shipped (SPEC-047, DEVELOP_VERSION 3) and P1 shipped
+(SPEC-048, bit-identical). Both are pinned in pyirradiance (`03fb097`). Develop on
+the Canon went from 587 to 392 ms (LibRaw: 463 ms); odd ActiveArea origins now
+develop grey to grey. P2 and P3 are open.
+
 From: pyirradiance (Python bindings, `jysf/pyirradiance`), 2026-11-06.
 Code read at irradiance `0b5083f` (main). The Python numbers were measured on
 the pinned build (`6d0d46a`), which has the same `color.rs` / `demosaic.rs` code

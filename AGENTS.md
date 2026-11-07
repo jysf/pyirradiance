@@ -21,7 +21,8 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
   `develop(bytes) -> (float32[H,W,3], DEVELOP_VERSION)` (linear sRGB via upstream
   `color::develop_color_into`, clipped to [0,1]), GIL released.
 - `develop` covers both upstream colour paths (ForwardMatrix, and ColorMatrix only, fixed
-  upstream in DEC-038 / DEVELOP_VERSION 2); `tests/api.py` checks grey stays grey on each.
+  upstream in DEC-038), and odd ActiveArea origins (SPEC-047, DEVELOP_VERSION 3); `tests/api.py`
+  checks grey stays grey on each.
 - `tests/smoke.py <dng>`: real file, 83 hostile inputs, determinism, 4-process agreement.
 - `tests/hostile_dims.py <dng>`: forged width/height (6 cases, each in a subprocess) must
   raise `ValueError`, not panic/abort.
@@ -30,7 +31,7 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
   + 6 corrupt files; epoch completes, worker results match main process, uncaught
   `ValueError` re-raises in the main process (no dead workers).
 - `tests/synth.py <dir>`: writes synthetic `bayer.dng` + `mono.dng` (pure-integer, portable).
-- `tests/golden.py [--update]`: 32 output hashes on synthetic DNGs vs `tests/golden.json`
+- `tests/golden.py [--update]`: 34 output hashes on synthetic DNGs vs `tests/golden.json`
   (generated on macOS arm64); matched on Linux arm64 + x86_64 via `tests/linux_docker.sh`.
 - `tests/ci.sh`: clippy + cargo test + build + every test on synthetic DNGs (what CI runs).
 - The `<dng>` scripts pass on `~/PSeven/experiments/crustimg_redo_plus/images/CANON-EOS-5D-MARK-III/5G4A9394.DNG`.
@@ -54,9 +55,9 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
    upstream SHA) and Docker-based Linux runs.
 
 ## Next
-- Upstream `develop`/`demosaic` take the CFA phase from the plane origin, so an odd ActiveArea
-  origin gives wrong colours (`notes/upstream-review-2026-11-06.md`, P0). When fixed upstream:
-  move the pin, add `RGGB_active_odd/{demosaic,develop}` goldens, drop the README caveat.
+- `notes/upstream-review-2026-11-06.md`: P0 (ActiveArea origin, SPEC-047) and P1 (demosaic
+  fast path, SPEC-048) landed upstream and are pinned; P2 (memory: fused scratch, f32 output)
+  and P3 (opt-in threads) are open. Adopt an f32 develop entry point in `rgb_f32()` if it lands.
 - When irradiance 0.2.0 ships (STAGE-010): pin it from crates.io, swap `plane_len()` for
   `plane::validate`, map `ErrorKind` (SPEC-040) to exception subclasses if it lands.
 

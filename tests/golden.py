@@ -39,12 +39,13 @@ def compute():
     got["RGGB_cm_only.dng"] = sha(cm_only)
     got["RGGB_cm_only/develop"] = sha(irradiance.develop(cm_only)[0].tobytes())
     # Odd ActiveArea origin: the CFA/BlackLevel patterns shift by one site.
-    # Pack only; upstream develop/demosaic don't handle this yet.
     odd = synth.bayer_dng(active=(3, 5))
     plane, meta = irradiance.unpack_bayer(odd)
     got["RGGB_active_odd.dng"] = sha(odd)
     got["RGGB_active_odd/pack"] = sha(irradiance.pack_bayer_4ch(plane, meta).tobytes())
     got["RGGB_active_odd/pack_normalized"] = sha(irradiance.pack_bayer_4ch(plane, meta, normalize=True).tobytes())
+    got["RGGB_active_odd/demosaic"] = sha(irradiance.demosaic(odd)[0].tobytes())
+    got["RGGB_active_odd/develop"] = sha(irradiance.develop(odd)[0].tobytes())
     return got
 
 

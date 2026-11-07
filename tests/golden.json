@@ -24,11 +24,13 @@
   "RGGB/pack_normalized": "462a37d30c26b845e11a80e5a9562b86a7a004aba4b384948715d4e0446af46f",
   "RGGB/unpack": "df7c36562c30e26267d1da061f45ed48736b4a3b9b14605e772f0c64b0b161f9",
   "RGGB_active_odd.dng": "b956c96e8cc236a3c8759133ed0f509ae53fad8732f2e7cb448b2ef643aeb8f9",
+  "RGGB_active_odd/demosaic": "d761c572510d68cd04c9df1005cbfb544e3911c9f6df64a2fc2066bfc2cccb5f",
+  "RGGB_active_odd/develop": "f1470a8af21456e561ac6d08b62c6c5b4b3935b10fb421c631f3f87a3ab05f01",
   "RGGB_active_odd/pack": "924593aabe0b2bafb6e4b94904c87a444d0121177034a7096a6c455c1e82cb4e",
   "RGGB_active_odd/pack_normalized": "a7b8a3c166b37ca1f95d85af8e67c730979beba2cd21ea096cb6c40b9ba908e0",
   "RGGB_cm_only.dng": "6c4c90b88cdd289cdb8bce3a9a715893e5d935876cd2465d98d06229f42127ed",
   "RGGB_cm_only/develop": "f9511b14e4ad4167a954978e733fa3f2873d7a62e457df5593125392c5b11c60",
-  "develop_version": "2",
+  "develop_version": "3",
   "mono.dng": "18acb38b7e88b05eb964590930bfe94e32d788630dd793d2128665a615a399dc",
   "mono/unpack": "7f8dfb2f9a553839acb503ece99f559aab6d2fa99e07eb40e66d4e6c0322539b"
 }

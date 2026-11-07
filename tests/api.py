@@ -187,6 +187,13 @@ def test_develop():
         path = "ForwardMatrix" if fm else "ColorMatrix only"
         print(f"  flat grey ({path}) -> rgb {g.mean(0).round(4)}, max channel spread {spread:.5f}")
         assert spread < 1e-3, spread
+    # Odd ActiveArea origins shift the CFA/BlackLevel patterns (upstream SPEC-047,
+    # DEVELOP_VERSION 3); before that fix, grey came out magenta here.
+    for origin in [(2, 5), (3, 4), (3, 5)]:
+        g = irradiance.develop(flat_neutral(active=origin))[0][8:-8, 8:-8].reshape(-1, 3)
+        spread = (g.max(1) - g.min(1)).max()
+        print(f"  flat grey, ActiveArea origin {origin} -> rgb {g.mean(0).round(4)}, spread {spread:.5f}")
+        assert spread < 1e-3, (origin, spread)
 
     # The real file, when it carries ForwardMatrix (the Canon does).
     try:

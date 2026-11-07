@@ -38,10 +38,12 @@ ending the run. A decoded image is compared with the clean file's output.
 
 ## Results
 
-Run on 2026-11-06. The irradiance build was the 0.0.2 code (its metadata still
-said 0.0.1; outputs are unaffected).
+Run on 2026-11-07 against upstream `03fb097` (DEVELOP_VERSION 3, with the
+demosaic interior fast path). The previous run (2026-11-06, upstream
+`6d0d46a`) had develop at 602 ms (Canon) and 328 ms (Nikon); everything else
+was within noise.
 
-Machine: Apple M4 Pro, 14 cores, Darwin 25.6.0, Python 3.14.4, irradiance 0.0.1 (DEVELOP_VERSION 2), rawpy 0.28.0 (LibRaw 0.22.2), torch 2.15.0, numpy 2.5.4
+Machine: Apple M4 Pro, 14 cores, Darwin 25.6.0, Python 3.14.4, irradiance 0.0.2 (DEVELOP_VERSION 3), rawpy 0.28.0 (LibRaw 0.22.2), torch 2.15.0, numpy 2.5.4
 
 Files: CANON-EOS-5D-MARK-III (23.4 MP), NIKON-D300S (12.5 MP)
 
@@ -49,32 +51,32 @@ Files: CANON-EOS-5D-MARK-III (23.4 MP), NIKON-D300S (12.5 MP)
 
 | file | pipeline | irradiance | rawpy |
 |---|---|---|---|
-| CANON-EOS-5D-MARK-III | pack | 11 ms | 26 ms |
-| CANON-EOS-5D-MARK-III | develop | 602 ms | 477 ms |
+| CANON-EOS-5D-MARK-III | pack | 11 ms | 25 ms |
+| CANON-EOS-5D-MARK-III | develop | 394 ms | 463 ms |
 | NIKON-D300S | pack | 6 ms | 14 ms |
-| NIKON-D300S | develop | 328 ms | 257 ms |
+| NIKON-D300S | develop | 211 ms | 254 ms |
 
 ### 2. Threads in one process (files/s)
 
 | pipeline | threads | irradiance | rawpy |
 |---|---|---|---|
-| pack | 1 | 90.3 | 48.9 |
-| pack | 2 | 226.4 | 95.9 |
-| pack | 4 | 395.4 | 164.8 |
-| pack | 8 | 520.0 | 238.3 |
-| develop | 1 | 2.1 | 2.7 |
-| develop | 2 | 4.3 | 5.4 |
-| develop | 4 | 7.7 | 9.8 |
-| develop | 8 | 14.6 | 17.6 |
+| pack | 1 | 90.1 | 48.1 |
+| pack | 2 | 220.4 | 96.1 |
+| pack | 4 | 383.0 | 165.8 |
+| pack | 8 | 470.7 | 233.8 |
+| develop | 1 | 3.2 | 2.7 |
+| develop | 2 | 6.2 | 5.3 |
+| develop | 4 | 9.3 | 9.5 |
+| develop | 8 | 19.7 | 15.7 |
 
 ### 3. torch DataLoader, pack pipeline (files/s, second epoch)
 
 | workers | irradiance | rawpy |
 |---|---|---|
-| 0 | 90.7 | 44.9 |
-| 2 | 124.9 | 64.4 |
-| 4 | 213.8 | 115.4 |
-| 8 | 255.8 | 168.9 |
+| 0 | 85.4 | 41.0 |
+| 2 | 125.5 | 65.0 |
+| 4 | 221.8 | 117.0 |
+| 8 | 264.0 | 173.7 |
 
 ### 4. Corrupt files, each in its own process (timeout 60 s)
 
@@ -86,7 +88,7 @@ error = raised a Python exception; same image = decoded to exactly the clean fil
 | IFD entry field randomised | 120 | 13 DIFFERENT image, 37 error, 70 same image | 18 DIFFERENT image, 15 error, 87 same image |
 | many IFD values off by a little | 40 | 40 error | 3 DIFFERENT image, 37 error |
 | forged width/height | 12 | 12 error | 12 error |
-| peak memory of any case |  | 993 MB | 488 MB |
+| peak memory of any case |  | 972 MB | 485 MB |
 
 ### 5. Determinism (CANON-EOS-5D-MARK-III: 3 repeat decodes + 4 processes)
 
@@ -98,18 +100,20 @@ error = raised a Python exception; same image = decoded to exactly the clean fil
 
 ## What this says
 
-- **ML input path (pack): irradiance is about 2x faster**: 11 ms vs 26 ms per
-  23 MP file, 520 vs 238 files/s on 8 threads, 1.5-2x through a DataLoader.
-- **Full develop: rawpy is about 25% faster** (477 vs 602 ms). LibRaw's
-  develop is mature, optimised C++.
-- **Both release the GIL**: develop scales about 7x on 8 threads for each.
+- **ML input path (pack): irradiance is about 2x faster**: 11 ms vs 25 ms per
+  23 MP file, 471 vs 234 files/s on 8 threads, 1.5-2x through a DataLoader.
+- **Full develop: irradiance is about 15% faster** (394 vs 463 ms on 23 MP,
+  211 vs 254 ms on 12.5 MP). Until upstream's demosaic fast path (SPEC-048)
+  rawpy was 25% faster. The demosaic algorithms differ (Hamilton-Adams vs AHD),
+  so this compares two reasonable defaults, not identical work.
+- **Both release the GIL**: develop scales about 6x on 8 threads for each.
 - **Neither crashed or hung** on 212 corrupt files: truncated and forged-size
   files are clean errors in both. On "plausible but wrong" directories
   irradiance refused all 40 while rawpy returned 3 silently different images.
   When a random directory field changes a value neither can check (a black
   level, a colour matrix), both return a different image without complaint
   (13 irradiance, 18 rawpy of 120).
-- **Peak memory is higher for irradiance** (993 vs 488 MB in the worst corrupt
+- **Peak memory is higher for irradiance** (972 vs 485 MB in the worst corrupt
   case). Its develop holds several full-size buffers, and the allocation guard
   bounds the plane by the file size rather than by what's sensible.
 - **Both are deterministic** on one machine. irradiance is also checked
