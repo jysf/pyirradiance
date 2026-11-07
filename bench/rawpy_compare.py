@@ -136,9 +136,12 @@ try:
         img = irradiance.develop(data)[0]
     else:
         import rawpy
+        # Same work as rawpy_develop(): an ML user needs float32, like develop() returns.
         with rawpy.imread(io.BytesIO(data)) as r:
             r.raw_image.copy()
-            img = r.postprocess(use_camera_wb=True, output_bps=16)
+            img = r.postprocess(gamma=(1, 1), no_auto_bright=True, output_bps=16,
+                                use_camera_wb=True, output_color=rawpy.ColorSpace.sRGB,
+                                user_flip=0).astype("float32") / 65535
     outcome = "decoded:" + hashlib.sha256(img.tobytes()).hexdigest()[:16]
 except Exception as e:
     outcome = "error:" + type(e).__name__
@@ -325,7 +328,8 @@ def main():
                  for j, data in enumerate(datas) for lib in LIBS}
         futs = {(lib, i): ex.submit(run_child, lib, payload, timeout)
                 for i, (_, payload) in enumerate(cases) for lib in LIBS}
-        clean = {k: f.result()[0] for k, f in clean.items()}
+        clean_runs = {k: f.result() for k, f in clean.items()}
+        clean = {k: outcome for k, (outcome, _) in clean_runs.items()}
         raw_outcomes = {k: f.result() for k, f in futs.items()}
 
     def classify(lib, i, outcome):
@@ -348,14 +352,18 @@ def main():
         rows.append(row)
     peak = {lib: max((r for (l, _), (_, r) in outcomes.items() if l == lib and r), default=0)
             for lib in LIBS}
-    rows.append(["peak memory of any case", "", *(f"{peak[lib]} MB" for lib in LIBS)])
+    for j, name in enumerate(names):
+        rows.append([f"peak memory, clean {name}", "",
+                     *(f"{clean_runs[(lib, j)][1]} MB" for lib in LIBS)])
+    rows.append(["peak memory, worst corrupt case", "", *(f"{peak[lib]} MB" for lib in LIBS)])
     results["corrupt"] = [{"kind": cases[i][0], "lib": lib, "outcome": o, "rss_mb": r}
                           for (lib, i), (o, r) in outcomes.items()]
     md += [f"### 4. Corrupt files, each in its own process (timeout {timeout} s)", "",
            "error = raised a Python exception; same image = decoded to exactly the clean "
            "file's output (the corruption didn't matter); DIFFERENT image = returned an "
            "image without complaint that differs from the clean file's (silently wrong); "
-           "crash = the process died; hang = timed out.", "",
+           "crash = the process died; hang = timed out. Memory is the child process's "
+           "peak RSS for decode + develop to float32, interpreter included.", "",
            table(["corruption", "cases", *LIBS], rows), ""]
     print("\n".join(md[-6:]), flush=True)
 

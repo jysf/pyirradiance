@@ -19,7 +19,7 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
   `pack_bayer_4ch(plane, meta, out=None, normalize=False) -> [4,H/2,W/2]`,
   `demosaic(bytes) -> (float32[H,W,3], DEVELOP_VERSION)` (camera-space RGB, raw values),
   `develop(bytes) -> (float32[H,W,3], DEVELOP_VERSION)` (linear sRGB via upstream
-  `color::develop_color_into`, clipped to [0,1]), GIL released.
+  `color::develop_color_f32_into`, clipped to [0,1]), GIL released.
 - `develop` covers both upstream colour paths (ForwardMatrix, and ColorMatrix only, fixed
   upstream in DEC-038), and odd ActiveArea origins (SPEC-047, DEVELOP_VERSION 3); `tests/api.py`
   checks grey stays grey on each.
@@ -55,9 +55,10 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
    upstream SHA) and Docker-based Linux runs.
 
 ## Next
-- `notes/upstream-review-2026-11-06.md`: P0 (ActiveArea origin, SPEC-047) and P1 (demosaic
-  fast path, SPEC-048) landed upstream and are pinned; P2 (memory: fused scratch, f32 output)
-  and P3 (opt-in threads) are open. Adopt an f32 develop entry point in `rgb_f32()` if it lands.
+- `notes/upstream-review-2026-11-06.md`: P0 (ActiveArea origin, SPEC-047), P1 (demosaic fast
+  path, SPEC-048) and P2 (fused develop + `develop_color_f32_into`, SPEC-049) are pinned;
+  `develop()` writes float32 directly. P3 (opt-in threads) is in progress upstream: when it
+  lands, add `threads=1` to `develop`/`demosaic` and check every thread count hits the goldens.
 - When irradiance 0.2.0 ships (STAGE-010): pin it from crates.io, swap `plane_len()` for
   `plane::validate`, map `ErrorKind` (SPEC-040) to exception subclasses if it lands.
 

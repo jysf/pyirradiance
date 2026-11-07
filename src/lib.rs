@@ -375,9 +375,10 @@ fn unpack_bayer<'py>(
 }
 
 /// A Bayer stage: full `[H, W]` mosaic in, interleaved u16 RGB out.
-type RgbStage = fn(&irradiance::ifd::Sensor, &[u16], &mut [u16]) -> Result<(), GlueError>;
+/// Writes float32 RGB (`65535 -> 1.0`) for a plane into `dst` (`3 * plane.len()`).
+type RgbStage = fn(&irradiance::ifd::Sensor, &[u16], &mut [f32]) -> Result<(), GlueError>;
 
-/// Unpack, run `stage`, and convert to float32 (`65535 -> 1.0`), GIL released.
+/// Unpack and run `stage` into a float32 `[H, W, 3]` array, GIL released.
 fn rgb_f32<'py>(
     py: Python<'py>,
     data: &[u8],
@@ -386,11 +387,9 @@ fn rgb_f32<'py>(
     let (sensor, rgb) = py.allow_threads(|| -> Result<_, GlueError> {
         let (sensor, plane) = unpack(data)?;
         // plane_len() bounds the plane by the input size, so x3 can't overflow.
-        let mut rgb = vec![0u16; plane.len().saturating_mul(3)];
+        let mut rgb = vec![0f32; plane.len().saturating_mul(3)];
         stage(&sensor, &plane, &mut rgb)?;
-        let mut f = vec![0f32; rgb.len()];
-        irradiance::tone::to_linear_f32_into(&rgb, &mut f)?;
-        Ok((sensor, f))
+        Ok((sensor, rgb))
     })?;
     let arr = numpy::PyArray1::from_vec(py, rgb)
         .reshape([sensor.height as usize, sensor.width as usize, 3])
@@ -406,19 +405,25 @@ fn demosaic<'py>(
     py: Python<'py>,
     data: &[u8],
 ) -> PyResult<(Bound<'py, PyArray3<f32>>, &'static str)> {
-    rgb_f32(py, data, |s, p, d| Ok(irradiance::demosaic::demosaic_into(s, p, d)?))
+    rgb_f32(py, data, |s, p, d| {
+        // Upstream demosaic has no f32 output, so go through a u16 buffer.
+        let mut rgb = vec![0u16; d.len()];
+        irradiance::demosaic::demosaic_into(s, p, &mut rgb)?;
+        Ok(irradiance::tone::to_linear_f32_into(&rgb, d)?)
+    })
 }
 
 /// Develop to linear sRGB: `(float32[H, W, 3], DEVELOP_VERSION)`, in `[0, 1]`.
 ///
 /// Per-site black/white levels, demosaic, then white balance (AsShotNeutral)
-/// and the DNG colour matrices (upstream `color::develop_color_into`).
+/// and the DNG colour matrices, written straight to float32 (upstream
+/// `color::develop_color_f32_into`, bit-identical to the u16 path / 65535).
 #[pyfunction]
 fn develop<'py>(
     py: Python<'py>,
     data: &[u8],
 ) -> PyResult<(Bound<'py, PyArray3<f32>>, &'static str)> {
-    rgb_f32(py, data, |s, p, d| Ok(irradiance::color::develop_color_into(s, p, d)?))
+    rgb_f32(py, data, |s, p, d| Ok(irradiance::color::develop_color_f32_into(s, p, d)?))
 }
 
 #[pymodule]

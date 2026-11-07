@@ -3,7 +3,10 @@
 **Status 2026-11-07:** P0 shipped (SPEC-047, DEVELOP_VERSION 3) and P1 shipped
 (SPEC-048, bit-identical). Both are pinned in pyirradiance (`03fb097`). Develop on
 the Canon went from 587 to 392 ms (LibRaw: 463 ms); odd ActiveArea origins now
-develop grey to grey. P2 and P3 are open.
+develop grey to grey. P2 shipped (SPEC-049, bit-identical, `16d10ce`): the
+bindings use `develop_color_f32_into`, and peak memory for decode + develop
+to float32 on the Canon is 705 MB vs LibRaw's 990 MB (whole process; the
+earlier 993-vs-488 compared our float32 with rawpy's uint16). P3 is in progress.
 
 From: pyirradiance (Python bindings, `jysf/pyirradiance`), 2026-11-06.
 Code read at irradiance `0b5083f` (main). The Python numbers were measured on

@@ -38,10 +38,14 @@ ending the run. A decoded image is compared with the clean file's output.
 
 ## Results
 
-Run on 2026-11-07 against upstream `03fb097` (DEVELOP_VERSION 3, with the
-demosaic interior fast path). The previous run (2026-11-06, upstream
-`6d0d46a`) had develop at 602 ms (Canon) and 328 ms (Nikon); everything else
-was within noise.
+Run on 2026-11-07 against upstream `16d10ce` (DEVELOP_VERSION 3: ActiveArea
+fix, demosaic fast path, fused develop with direct float32 output). Sections
+1, 2 and 5 come from one run. Section 4 comes from a second run of the same
+build, after the corrupt-file child was changed to give rawpy the same float32
+pipeline (earlier runs compared our float32 with rawpy's uint16, overstating
+our memory); that run's timings were skewed by a parallel compile and are not
+used. Before upstream's fast path (2026-11-06, `6d0d46a`), develop took
+602 ms (Canon) and 328 ms (Nikon).
 
 Machine: Apple M4 Pro, 14 cores, Darwin 25.6.0, Python 3.14.4, irradiance 0.0.2 (DEVELOP_VERSION 3), rawpy 0.28.0 (LibRaw 0.22.2), torch 2.15.0, numpy 2.5.4
 
@@ -51,44 +55,49 @@ Files: CANON-EOS-5D-MARK-III (23.4 MP), NIKON-D300S (12.5 MP)
 
 | file | pipeline | irradiance | rawpy |
 |---|---|---|---|
-| CANON-EOS-5D-MARK-III | pack | 11 ms | 25 ms |
-| CANON-EOS-5D-MARK-III | develop | 394 ms | 463 ms |
-| NIKON-D300S | pack | 6 ms | 14 ms |
-| NIKON-D300S | develop | 211 ms | 254 ms |
+| CANON-EOS-5D-MARK-III | pack | 11 ms | 26 ms |
+| CANON-EOS-5D-MARK-III | develop | 398 ms | 477 ms |
+| NIKON-D300S | pack | 6 ms | 15 ms |
+| NIKON-D300S | develop | 216 ms | 257 ms |
 
 ### 2. Threads in one process (files/s)
 
 | pipeline | threads | irradiance | rawpy |
 |---|---|---|---|
-| pack | 1 | 90.1 | 48.1 |
-| pack | 2 | 220.4 | 96.1 |
-| pack | 4 | 383.0 | 165.8 |
-| pack | 8 | 470.7 | 233.8 |
-| develop | 1 | 3.2 | 2.7 |
-| develop | 2 | 6.2 | 5.3 |
-| develop | 4 | 9.3 | 9.5 |
-| develop | 8 | 19.7 | 15.7 |
+| pack | 1 | 88.0 | 47.5 |
+| pack | 2 | 224.3 | 94.6 |
+| pack | 4 | 390.6 | 166.9 |
+| pack | 8 | 506.0 | 238.4 |
+| develop | 1 | 3.1 | 2.6 |
+| develop | 2 | 6.3 | 4.9 |
+| develop | 4 | 11.1 | 9.4 |
+| develop | 8 | 20.2 | 14.2 |
 
 ### 3. torch DataLoader, pack pipeline (files/s, second epoch)
 
+From the 2026-11-06 run: this section was skewed by machine load in both
+2026-11-07 runs, and the pack path hasn't changed since.
+
 | workers | irradiance | rawpy |
 |---|---|---|
-| 0 | 85.4 | 41.0 |
-| 2 | 125.5 | 65.0 |
-| 4 | 221.8 | 117.0 |
-| 8 | 264.0 | 173.7 |
+| 0 | 90.7 | 44.9 |
+| 2 | 124.9 | 64.4 |
+| 4 | 213.8 | 115.4 |
+| 8 | 255.8 | 168.9 |
 
 ### 4. Corrupt files, each in its own process (timeout 60 s)
 
-error = raised a Python exception; same image = decoded to exactly the clean file's output (the corruption didn't matter); DIFFERENT image = returned an image without complaint that differs from the clean file's (silently wrong); crash = the process died; hang = timed out.
+error = raised a Python exception; same image = decoded to exactly the clean file's output (the corruption didn't matter); DIFFERENT image = returned an image without complaint that differs from the clean file's (silently wrong); crash = the process died; hang = timed out. Memory is the child process's peak RSS for decode + develop to float32, interpreter included.
 
 | corruption | cases | irradiance | rawpy |
 |---|---|---|---|
 | truncated | 40 | 40 error | 40 error |
-| IFD entry field randomised | 120 | 13 DIFFERENT image, 37 error, 70 same image | 18 DIFFERENT image, 15 error, 87 same image |
+| IFD entry field randomised | 120 | 13 DIFFERENT image, 37 error, 70 same image | 16 DIFFERENT image, 15 error, 89 same image |
 | many IFD values off by a little | 40 | 40 error | 3 DIFFERENT image, 37 error |
 | forged width/height | 12 | 12 error | 12 error |
-| peak memory of any case |  | 972 MB | 485 MB |
+| peak memory, clean CANON-EOS-5D-MARK-III |  | 705 MB | 990 MB |
+| peak memory, clean NIKON-D300S |  | 403 MB | 573 MB |
+| peak memory, worst corrupt case |  | 705 MB | 1007 MB |
 
 ### 5. Determinism (CANON-EOS-5D-MARK-III: 3 repeat decodes + 4 processes)
 
@@ -100,10 +109,10 @@ error = raised a Python exception; same image = decoded to exactly the clean fil
 
 ## What this says
 
-- **ML input path (pack): irradiance is about 2x faster**: 11 ms vs 25 ms per
-  23 MP file, 471 vs 234 files/s on 8 threads, 1.5-2x through a DataLoader.
-- **Full develop: irradiance is about 15% faster** (394 vs 463 ms on 23 MP,
-  211 vs 254 ms on 12.5 MP). Until upstream's demosaic fast path (SPEC-048)
+- **ML input path (pack): irradiance is about 2x faster**: 11 ms vs 26 ms per
+  23 MP file, about 2x on 8 threads, 1.5-2x through a DataLoader.
+- **Full develop: irradiance is about 15-20% faster** (398 vs 477 ms on 23 MP,
+  216 vs 257 ms on 12.5 MP). Until upstream's demosaic fast path (SPEC-048)
   rawpy was 25% faster. The demosaic algorithms differ (Hamilton-Adams vs AHD),
   so this compares two reasonable defaults, not identical work.
 - **Both release the GIL**: develop scales about 6x on 8 threads for each.
@@ -112,10 +121,11 @@ error = raised a Python exception; same image = decoded to exactly the clean fil
   irradiance refused all 40 while rawpy returned 3 silently different images.
   When a random directory field changes a value neither can check (a black
   level, a colour matrix), both return a different image without complaint
-  (13 irradiance, 18 rawpy of 120).
-- **Peak memory is higher for irradiance** (972 vs 485 MB in the worst corrupt
-  case). Its develop holds several full-size buffers, and the allocation guard
-  bounds the plane by the file size rather than by what's sensible.
+  (13 irradiance, 16 rawpy of 120).
+- **Peak memory is lower for irradiance** for decode + develop to float32:
+  705 vs 990 MB on the 23 MP file, 403 vs 573 MB on 12.5 MP (whole process,
+  interpreter included). Corrupt files don't push it higher: the allocation
+  guard bounds every buffer by the input size.
 - **Both are deterministic** on one machine. irradiance is also checked
   bit-identical across macOS/Linux and x86_64/arm64 (`tests/golden.py` in CI);
   rawpy wasn't tested across platforms here.
