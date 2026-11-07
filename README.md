@@ -89,6 +89,11 @@ fit the 2x2 tile are not supported (the latter raises `ValueError`).
 keep only active pixels, use `meta.active_area` = `(top, left, bottom, right)`
 (halve it for `pack_bayer_4ch` output when top/left are even).
 
+**ActiveArea origin:** the CFA and `BlackLevel` patterns start at the
+`ActiveArea` top-left (DNG spec; LibRaw does the same), so `pack_bayer_4ch`
+channels are right for any origin. `demosaic` and `develop` currently assume
+an even origin (true for the cameras tested); upstream is fixing this.
+
 **`out=`**: `unpack_bayer(data, out=arr)` and `pack_bayer_4ch(..., out=arr)`
 write into a preallocated, C-contiguous, writable array of the right dtype and
 shape, and return it. For torch, pass `tensor.numpy()` (works for pinned
@@ -134,7 +139,7 @@ DNGs, on an Apple M4 Pro ([full results and method](https://github.com/jysf/pyir
 | Hostile input -> `ValueError`, never a crash | `tests/smoke.py` (83 truncated/corrupted files), `tests/hostile_dims.py` (forged sizes up to 2^32 x 2^32, each in a subprocess), `tests/test_dataloader.py` (corrupt files mixed into a 4-worker `DataLoader`) |
 | Allocation bounded by input size | Before allocating, the decoder requires the pixel data to fit in the file; a forged header can't request more than ~8 samples per input byte |
 | Deterministic | Repeat decodes and 4 processes produce identical hashes |
-| Same bits on every platform | `tests/golden.py`: 29 output hashes on synthetic DNGs (all 4 CFA phases; unpack, pack, normalise, demosaic, develop on both colour paths). Match verified on macOS arm64 (also on the real corpus), Linux x86_64 and Linux arm64 (synthetic files only). CI runs this on every push, and `wheels.yml` runs it against each built wheel, including under Python 3.9. |
+| Same bits on every platform | `tests/golden.py`: 32 output hashes on synthetic DNGs (all 4 CFA phases; unpack, pack, normalise, demosaic, develop on both colour paths; pack with an odd ActiveArea origin). Match verified on macOS arm64 (also on the real corpus), Linux x86_64 and Linux arm64 (synthetic files only). CI runs this on every push, and `wheels.yml` runs it against each built wheel, including under Python 3.9. |
 
 ## Development
 

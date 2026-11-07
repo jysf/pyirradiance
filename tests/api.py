@@ -119,6 +119,23 @@ def test_pack_normalize():
     print(f"  blacks per channel {blacks}, range [{got.min():.4f}, {got.max():.4f}] (unclipped)")
 
 
+def test_pack_active_area_origin():
+    # CFAPattern and BlackLevel start at the ActiveArea top-left; an odd origin
+    # shifts every site's colour. LibRaw agrees (notes/active_area_origin_repro.py).
+    for top, left in [(2, 4), (2, 5), (3, 4), (3, 5)]:
+        for name, pattern in [("RGGB", [0, 1, 1, 2]), ("BGGR", [2, 1, 1, 0])]:
+            plane, m = irradiance.unpack_bayer(synth.bayer_dng(pattern=pattern, active=(top, left)))
+            # The pattern as the plane's own 2x2 tiles see it.
+            seen = [pattern[((y - top) % 2) * 2 + (x - left) % 2] for y in (0, 1) for x in (0, 1)]
+            assert np.array_equal(irradiance.pack_bayer_4ch(plane, m), reference_4ch(plane, seen)), (name, top, left)
+        # Grey subject: normalised channels must be level * AsShotNeutral.
+        plane, m = irradiance.unpack_bayer(flat_neutral(active=(top, left)))
+        got = irradiance.pack_bayer_4ch(plane, m, normalize=True).reshape(4, -1).mean(1)
+        want = 0.2 * np.array([0.606276, 1.0, 1.0, 0.461885])
+        assert np.abs(got - want).max() < 1e-4, (top, left, got)
+        print(f"  origin ({top},{left}): channels match; grey -> {got.round(4)}")
+
+
 def test_pack_out():
     out = np.zeros((4, H // 2, W // 2), np.uint16)
     assert irradiance.pack_bayer_4ch(ref, meta, out=out) is out
@@ -137,10 +154,12 @@ def test_pack_out():
     print("  monochrome:", raises(ValueError, irradiance.pack_bayer_4ch, mplane, mmeta))
 
 
-def flat_neutral(level=0.2, forward_matrix=True):
+def flat_neutral(level=0.2, forward_matrix=True, active=(2, 4)):
     """Synthetic RGGB file whose every pixel is a grey subject at `level`: each
-    site reads black + level * (white - black) * AsShotNeutral[colour]."""
-    d = synth.bayer_dng(forward_matrix=forward_matrix)
+    site reads black + level * (white - black) * AsShotNeutral[colour]. The
+    mosaic is laid out from the ActiveArea top-left, as DNG defines it."""
+    top, left = active
+    d = synth.bayer_dng(forward_matrix=forward_matrix, active=active)
     w, h = 256, 192
     black, white = [512, 512, 512, 520], 16000
     asn = [0.606276, 1.0, 0.461885]
@@ -148,7 +167,7 @@ def flat_neutral(level=0.2, forward_matrix=True):
     px = bytearray()
     for y in range(h):
         for x in range(w):
-            i = (y % 2) * 2 + x % 2
+            i = ((y - top) % 2) * 2 + (x - left) % 2
             v = black[i] + round(level * (white - black[i]) * asn[colour[i]])
             px += v.to_bytes(2, "little")
     return d[: len(d) - len(px)] + bytes(px)  # pixels are the file's tail

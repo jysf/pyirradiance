@@ -3,8 +3,9 @@
 //! Pure safe Rust with no indexing: every access goes through `chunks_exact`,
 //! `as_chunks` or zipped iterators, so a bad shape is an `Err`, not a panic.
 
-/// A position inside the repeating 2x2 tile, relative to the plane origin
-/// (the same convention `irradiance::demosaic` uses for `CFAPattern`).
+/// A position inside the repeating 2x2 tile. `Phase::from_cfa` gives slots
+/// relative to the `CFAPattern` origin, which DNG puts at the `ActiveArea`
+/// top-left; `Phase::at_origin` moves them to plane coordinates for `pack`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Slot {
     TopLeft,
@@ -30,6 +31,15 @@ impl Slot {
         match self {
             Slot::TopLeft | Slot::BottomLeft => 0,
             Slot::TopRight | Slot::BottomRight => 1,
+        }
+    }
+
+    fn from_parity(row: u32, col: u32) -> Slot {
+        match (row % 2, col % 2) {
+            (0, 0) => Slot::TopLeft,
+            (0, _) => Slot::TopRight,
+            (_, 0) => Slot::BottomLeft,
+            (_, _) => Slot::BottomRight,
         }
     }
 
@@ -91,6 +101,13 @@ impl Phase {
             return Err(not_bayer());
         };
         Ok(Phase { slots: [r, gr, gb, b] })
+    }
+
+    /// Move pattern-relative slots to plane coordinates, for a pattern whose
+    /// origin is at plane `(top, left)` (the `ActiveArea` top-left). With an
+    /// odd origin the plane's own 2x2 tiles see the pattern shifted by one.
+    pub fn at_origin(&self, top: u32, left: u32) -> Phase {
+        Phase { slots: self.slots.map(|s| Slot::from_parity(s.row() + top % 2, s.col() + left % 2)) }
     }
 }
 
@@ -187,5 +204,17 @@ mod tests {
         );
         assert!(Phase::from_cfa([2, 2], &RGGB, &[0, 1, 9]).is_err());
         assert!(Phase::from_cfa([2, 4], &RGGB, &[]).is_err());
+    }
+
+    #[test]
+    fn odd_pattern_origin_shifts_the_slots() {
+        // RGGB from an origin at plane (1, 0): plane row 0 is the pattern's
+        // second row, so the plane reads GBRG.
+        let rggb = Phase::from_cfa([2, 2], &RGGB, &[]).unwrap();
+        let gbrg = Phase::from_cfa([2, 2], &[1, 2, 0, 1], &[]).unwrap();
+        assert_eq!(rggb.at_origin(1, 0).slots, gbrg.slots);
+        assert_eq!(rggb.at_origin(80, 122).slots, rggb.slots); // even: unchanged
+        let bggr = Phase::from_cfa([2, 2], &[2, 1, 1, 0], &[]).unwrap();
+        assert_eq!(rggb.at_origin(1, 1).slots, bggr.slots);
     }
 }

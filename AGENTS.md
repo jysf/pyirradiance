@@ -30,7 +30,7 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
   + 6 corrupt files; epoch completes, worker results match main process, uncaught
   `ValueError` re-raises in the main process (no dead workers).
 - `tests/synth.py <dir>`: writes synthetic `bayer.dng` + `mono.dng` (pure-integer, portable).
-- `tests/golden.py [--update]`: 29 output hashes on synthetic DNGs vs `tests/golden.json`
+- `tests/golden.py [--update]`: 32 output hashes on synthetic DNGs vs `tests/golden.json`
   (generated on macOS arm64); matched on Linux arm64 + x86_64 via `tests/linux_docker.sh`.
 - `tests/ci.sh`: clippy + cargo test + build + every test on synthetic DNGs (what CI runs).
 - The `<dng>` scripts pass on `~/PSeven/experiments/crustimg_redo_plus/images/CANON-EOS-5D-MARK-III/5G4A9394.DNG`.
@@ -44,7 +44,8 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
 2. ~~`unpack_bayer(data, out=None)`~~ Done: C-contiguous writable `uint16[H,W]` (use
    `tensor.numpy()` for torch); bad shape/order/read-only -> `ValueError`, bad dtype -> `TypeError`.
 3. ~~`pack_bayer_4ch(plane, meta, out=None, normalize=False)`~~ Done: `[R, Gr, Gb, B]` for all
-   4 phases (`src/pack.rs`); normalise = per-site BlackLevel (origin = ActiveArea) to
+   4 phases (`src/pack.rs`), CFA phase and BlackLevel both relative to the ActiveArea origin
+   (odd origins too; fixed 2026-11-06); normalise = per-site BlackLevel to
    WhiteLevel, float32, unclipped. Meta gained `cfa_repeat_dim`, `cfa_plane_color`,
    `black_levels`, `black_level_repeat_dim`, `active_area`.
 4. ~~`meta.cfa_pattern` should be a `list[int]`, not `bytes`.~~ Done (stored as `u16`).
@@ -53,6 +54,9 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
    upstream SHA) and Docker-based Linux runs.
 
 ## Next
+- Upstream `develop`/`demosaic` take the CFA phase from the plane origin, so an odd ActiveArea
+  origin gives wrong colours (`notes/upstream-review-2026-11-06.md`, P0). When fixed upstream:
+  move the pin, add `RGGB_active_odd/{demosaic,develop}` goldens, drop the README caveat.
 - When irradiance 0.2.0 ships (STAGE-010): pin it from crates.io, swap `plane_len()` for
   `plane::validate`, map `ErrorKind` (SPEC-040) to exception subclasses if it lands.
 

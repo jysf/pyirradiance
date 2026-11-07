@@ -90,8 +90,10 @@ CANON_COLOR = [
 FORWARD_MATRIX_TAGS = (50964, 50965)
 
 
-def bayer_dng(width=256, height=192, pattern=(0, 1, 1, 2), forward_matrix=True):
-    """forward_matrix=False drops ForwardMatrix1/2 (ColorMatrix-only colour)."""
+def bayer_dng(width=256, height=192, pattern=(0, 1, 1, 2), forward_matrix=True, active=(2, 4)):
+    """forward_matrix=False drops ForwardMatrix1/2 (ColorMatrix-only colour).
+    `active` is the ActiveArea (top, left); the CFA and BlackLevel patterns
+    start there, so an odd value shifts every pixel's colour."""
     black, white = [512, 512, 512, 520], 16000
     # Slightly below black and above white, as real sensors read.
     px = b"".join(struct.pack("<H", sample(x, y, 480, 16200)) for y in range(height) for x in range(width))
@@ -109,7 +111,7 @@ def bayer_dng(width=256, height=192, pattern=(0, 1, 1, 2), forward_matrix=True):
         (50713, SHORT, [2, 2]),              # BlackLevelRepeatDim
         (50714, LONG, black),                # BlackLevel
         (50717, LONG, [white]),              # WhiteLevel
-        (50829, LONG, [2, 4, height - 2, width - 4]),  # ActiveArea (top, left, bottom, right)
+        (50829, LONG, [active[0], active[1], height - 2, width - 4]),  # ActiveArea (top, left, bottom, right)
     ]
     entries += [e for e in CANON_COLOR if forward_matrix or e[0] not in FORWARD_MATRIX_TAGS]
     return tiff(entries, px, strip_rows=64, row_bytes=2 * width)

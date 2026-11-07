@@ -232,8 +232,9 @@ fn channel_blacks(m: &SensorMeta, phase: &pack::Phase) -> Result<[f32; 4], Strin
 /// Pack a Bayer plane into `[4, H/2, W/2]` channels `[R, Gr, Gb, B]`.
 ///
 /// `plane` must be the full `uint16[H, W]` plane from `unpack_bayer` (its
-/// shape must match `meta`, since the CFA phase is relative to the plane
-/// origin). An odd trailing row/column is dropped. Without `normalize`,
+/// shape must match `meta`). The CFA and `BlackLevel` patterns start at the
+/// `ActiveArea` top-left, per the DNG spec; tiles are taken from the plane
+/// origin, so the channels are right for odd origins too. An odd trailing row/column is dropped. Without `normalize`,
 /// returns `uint16` raw values. With `normalize=True`, returns `float32`
 /// `(v - black) / (white - black)` per channel, **not clipped** (noise goes
 /// below 0, specular highlights above 1); black is the per-site `BlackLevel`
@@ -273,7 +274,12 @@ fn pack_bayer_4ch<'py>(
     // u8::MAX is an unknown colour that from_cfa rejects anyway.
     let to_u8 = |v: &[u16]| -> Vec<u8> { v.iter().map(|&x| u8::try_from(x).unwrap_or(u8::MAX)).collect() };
     let plane_color = to_u8(m.cfa_plane_color.as_deref().unwrap_or(&[]));
-    let phase = pack::Phase::from_cfa([rd, cd], &to_u8(pattern), &plane_color).map_err(invalid)?;
+    // CFAPattern's origin is the ActiveArea top-left (DNG spec, and what LibRaw
+    // does); `phase` is in plane coordinates from here on.
+    let (top, left) = m.active_area.map_or((0, 0), |(t, l, _, _)| (t, l));
+    let phase = pack::Phase::from_cfa([rd, cd], &to_u8(pattern), &plane_color)
+        .map_err(invalid)?
+        .at_origin(top, left);
     let (w, out_shape) = (want[1], [4, want[0] / 2, want[1] / 2]);
 
     let src_ro = plane
