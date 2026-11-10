@@ -375,24 +375,40 @@ fn unpack_bayer<'py>(
 }
 
 /// A Bayer stage: full `[H, W]` mosaic in, interleaved u16 RGB out.
-/// Writes float32 RGB (`65535 -> 1.0`) for a plane into `dst` (`3 * plane.len()`).
-type RgbStage = fn(&irradiance::ifd::Sensor, &[u16], &mut [f32]) -> Result<(), GlueError>;
+/// Writes float32 RGB (`65535 -> 1.0`) for a plane into `dst` (`3 * out_w * out_h`),
+/// on `threads` threads (upstream output is byte-identical for every count).
+type RgbStage = fn(&irradiance::ifd::Sensor, &[u16], &mut [f32], usize) -> Result<(), GlueError>;
 
-/// Unpack and run `stage` into a float32 `[H, W, 3]` array, GIL released.
+/// The stage's output `(width, height)`.
+type RgbDims = fn(&irradiance::ifd::Sensor) -> Result<(u32, u32), GlueError>;
+
+/// Unpack and run `stage` into a float32 `[out_h, out_w, 3]` array, GIL released.
 fn rgb_f32<'py>(
     py: Python<'py>,
     data: &[u8],
+    threads: i64,
+    dims: RgbDims,
     stage: RgbStage,
 ) -> PyResult<(Bound<'py, PyArray3<f32>>, &'static str)> {
-    let (sensor, rgb) = py.allow_threads(|| -> Result<_, GlueError> {
+    let threads = usize::try_from(threads)
+        .ok()
+        .filter(|&t| t >= 1)
+        .ok_or_else(|| PyValueError::new_err(format!("threads must be at least 1, got {threads}")))?;
+    let (shape, rgb) = py.allow_threads(|| -> Result<_, GlueError> {
         let (sensor, plane) = unpack(data)?;
-        // plane_len() bounds the plane by the input size, so x3 can't overflow.
-        let mut rgb = vec![0f32; plane.len().saturating_mul(3)];
-        stage(&sensor, &plane, &mut rgb)?;
-        Ok((sensor, rgb))
+        let (w, h) = dims(&sensor)?;
+        let shape = [h as usize, w as usize, 3];
+        // The output is at most the plane (a crop of it, maybe rotated), and
+        // plane_len() bounds the plane by the input size; refuse anything else.
+        let n = (shape[0].checked_mul(shape[1]))
+            .filter(|&n| n <= plane.len())
+            .ok_or_else(|| GlueError::Invalid(format!("output {w}x{h} is larger than the sensor plane")))?;
+        let mut rgb = vec![0f32; n * 3];
+        stage(&sensor, &plane, &mut rgb, threads)?;
+        Ok((shape, rgb))
     })?;
     let arr = numpy::PyArray1::from_vec(py, rgb)
-        .reshape([sensor.height as usize, sensor.width as usize, 3])
+        .reshape(shape)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok((arr, irradiance::DEVELOP_VERSION))
 }
@@ -400,15 +416,20 @@ fn rgb_f32<'py>(
 /// Demosaic to camera-space linear RGB: `(float32[H, W, 3], DEVELOP_VERSION)`.
 ///
 /// Raw sample values, no black/white levels, white balance or colour matrix.
+/// `threads` > 1 splits the work into row bands; the output is identical for
+/// every value. Keep 1 inside DataLoader workers (they already run in parallel).
 #[pyfunction]
+#[pyo3(signature = (data, threads=1))]
 fn demosaic<'py>(
     py: Python<'py>,
     data: &[u8],
+    threads: i64,
 ) -> PyResult<(Bound<'py, PyArray3<f32>>, &'static str)> {
-    rgb_f32(py, data, |s, p, d| {
+    let full_plane: RgbDims = |s| Ok((s.width, s.height));
+    rgb_f32(py, data, threads, full_plane, |s, p, d, t| {
         // Upstream demosaic has no f32 output, so go through a u16 buffer.
         let mut rgb = vec![0u16; d.len()];
-        irradiance::demosaic::demosaic_into(s, p, &mut rgb)?;
+        irradiance::demosaic::demosaic_into_threaded(s, p, &mut rgb, t)?;
         Ok(irradiance::tone::to_linear_f32_into(&rgb, d)?)
     })
 }
@@ -418,12 +439,21 @@ fn demosaic<'py>(
 /// Per-site black/white levels, demosaic, then white balance (AsShotNeutral)
 /// and the DNG colour matrices, written straight to float32 (upstream
 /// `color::develop_color_f32_into`, bit-identical to the u16 path / 65535).
+/// The output is cropped to ActiveArea then DefaultCrop and rotated by
+/// Orientation, so `H, W` are the image's, not the sensor plane's.
+/// `threads` > 1 splits the work into row bands; the output is identical for
+/// every value. Keep 1 inside DataLoader workers (they already run in parallel).
 #[pyfunction]
+#[pyo3(signature = (data, threads=1))]
 fn develop<'py>(
     py: Python<'py>,
     data: &[u8],
+    threads: i64,
 ) -> PyResult<(Bound<'py, PyArray3<f32>>, &'static str)> {
-    rgb_f32(py, data, |s, p, d| Ok(irradiance::color::develop_color_f32_into(s, p, d)?))
+    let cropped: RgbDims = |s| Ok(irradiance::develop::output_dimensions(s)?);
+    rgb_f32(py, data, threads, cropped, |s, p, d, t| {
+        Ok(irradiance::color::develop_color_f32_into_threaded(s, p, d, t)?)
+    })
 }
 
 #[pymodule]

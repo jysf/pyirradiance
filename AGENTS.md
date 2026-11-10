@@ -17,9 +17,11 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
   (`just release X.Y.Z`: checks, bumps, tags; the tag publishes to PyPI then GitHub).
 - `src/lib.rs`: `unpack_bayer(bytes, out=None) -> (uint16[H,W], SensorMeta)`,
   `pack_bayer_4ch(plane, meta, out=None, normalize=False) -> [4,H/2,W/2]`,
-  `demosaic(bytes) -> (float32[H,W,3], DEVELOP_VERSION)` (camera-space RGB, raw values),
-  `develop(bytes) -> (float32[H,W,3], DEVELOP_VERSION)` (linear sRGB via upstream
-  `color::develop_color_f32_into`, clipped to [0,1]), GIL released.
+  `develop(bytes, threads=1) -> (float32[h,w,3], DEVELOP_VERSION)` (linear sRGB via upstream
+  `color::develop_color_f32_into_threaded`, clipped to [0,1]; cropped to ActiveArea, DefaultCrop
+  and oriented, size from `develop::output_dimensions`, SPEC-050 / DEVELOP_VERSION 4),
+  `demosaic(bytes, threads=1)` (camera-space RGB, raw values) keeps the full plane. `threads` output is byte-identical for every
+  count (SPEC-051; `tests/api.py::test_threads`). GIL released.
 - `develop` covers both upstream colour paths (ForwardMatrix, and ColorMatrix only, fixed
   upstream in DEC-038), and odd ActiveArea origins (SPEC-047, DEVELOP_VERSION 3); `tests/api.py`
   checks grey stays grey on each.
@@ -55,10 +57,13 @@ bit-identical across OS/arch; wheel is small, no C++ toolchain.
    upstream SHA) and Docker-based Linux runs.
 
 ## Next
-- `notes/upstream-review-2026-11-06.md`: P0 (ActiveArea origin, SPEC-047), P1 (demosaic fast
-  path, SPEC-048) and P2 (fused develop + `develop_color_f32_into`, SPEC-049) are pinned;
-  `develop()` writes float32 directly. P3 (opt-in threads) is in progress upstream: when it
-  lands, add `threads=1` to `develop`/`demosaic` and check every thread count hits the goldens.
+- `notes/upstream-review-2026-11-06.md`: P0-P3 all shipped upstream and are pinned (SPEC-047,
+  048, 049, 051), plus the develop crop/orient (SPEC-050). Upstream's pre-0.2.0 wave (SPEC-052-055,
+  incl. a "Sensor API seal") is in progress and may change the API we call; the weekly canary
+  will show it.
+- Downstream users of `develop()` geometry: `../pyirradiance-dataloader-demo` (pack only, not
+  affected) and `../../pyirradiance-projects/comfyui-irradiance` (Nikon plate example uses fixed
+  pixel crops on `develop` output; they shift by the DefaultCrop origin from 0.0.4 on).
 - When irradiance 0.2.0 ships (STAGE-010): pin it from crates.io, swap `plane_len()` for
   `plane::validate`, map `ErrorKind` (SPEC-040) to exception subclasses if it lands.
 

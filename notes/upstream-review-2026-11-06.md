@@ -1,12 +1,11 @@
 # irradiance: findings from the Python bindings' rawpy benchmark
 
-**Status 2026-11-07:** P0 shipped (SPEC-047, DEVELOP_VERSION 3) and P1 shipped
-(SPEC-048, bit-identical). Both are pinned in pyirradiance (`03fb097`). Develop on
-the Canon went from 587 to 392 ms (LibRaw: 463 ms); odd ActiveArea origins now
-develop grey to grey. P2 shipped (SPEC-049, bit-identical, `16d10ce`): the
-bindings use `develop_color_f32_into`, and peak memory for decode + develop
-to float32 on the Canon is 705 MB vs LibRaw's 990 MB (whole process; the
-earlier 993-vs-488 compared our float32 with rawpy's uint16). P3 is in progress.
+**Status 2026-11-10:** all four shipped and pinned in pyirradiance (`75f681a`):
+P0 (SPEC-047), P1 (SPEC-048), P2 (SPEC-049), P3 (SPEC-051, `threads=`: a 23 MP
+develop goes from 412 ms to 61 ms on 8 threads, byte-identical). SPEC-050 also
+crops/orients the colour develop (the masked-border item); verified on three
+cameras that every output pixel equals the earlier full-plane render. Peak memory
+for decode + develop to float32 on the Canon: 705 MB vs LibRaw's 990 MB.
 
 From: pyirradiance (Python bindings, `jysf/pyirradiance`), 2026-11-06.
 Code read at irradiance `0b5083f` (main). The Python numbers were measured on

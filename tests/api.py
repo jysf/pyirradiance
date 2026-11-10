@@ -175,7 +175,10 @@ def flat_neutral(level=0.2, forward_matrix=True, active=(2, 4)):
 
 def test_develop():
     rgb, ver = irradiance.develop(synth.bayer_dng())
-    assert rgb.dtype == np.float32 and rgb.shape == (192, 256, 3) and ver == irradiance.DEVELOP_VERSION
+    # Cropped to ActiveArea (2, 4, 190, 252); no DefaultCrop, Orientation 1
+    # (upstream SPEC-050, DEVELOP_VERSION 4). demosaic keeps the full plane.
+    assert rgb.dtype == np.float32 and rgb.shape == (188, 248, 3) and ver == irradiance.DEVELOP_VERSION
+    assert irradiance.demosaic(synth.bayer_dng())[0].shape == (192, 256, 3)
     assert rgb.min() >= 0 and rgb.max() <= 1 and not np.isnan(rgb).any()
 
     # Grey in -> grey out: white balance and the colour matrix keep neutral
@@ -203,6 +206,22 @@ def test_develop():
         print(f"  {os.path.basename(sys.argv[1])}: ValueError: {e}")
 
     print("  monochrome:", raises(ValueError, irradiance.develop, synth.mono_dng()))
+
+
+def test_threads():
+    # Row-band threading (upstream SPEC-051) must not change a single byte,
+    # whatever the count: 1, even, odd, more threads than rows.
+    for d in (synth.bayer_dng(), synth.bayer_dng(active=(3, 5)), data):
+        for fn in (irradiance.develop, irradiance.demosaic):
+            try:
+                want = fn(d)[0]
+            except ValueError:
+                continue  # e.g. a monochrome corpus file
+            for t in (2, 3, 8, 1000):
+                assert np.array_equal(fn(d, threads=t)[0], want), (fn.__name__, t)
+    print("  develop/demosaic identical for threads 1, 2, 3, 8, 1000")
+    for bad in (0, -1):
+        print(f"  threads={bad}:", raises(ValueError, irradiance.develop, synth.bayer_dng(), threads=bad))
 
 
 if __name__ == "__main__":

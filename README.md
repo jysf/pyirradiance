@@ -21,7 +21,7 @@ pure-Rust camera RAW reader. Built as a dataloader primitive for PyTorch/ML:
 | Tiled DNG, non-Bayer CFA (X-Trans, ...) | `ValueError` |
 
 Upstream unpacks 8, 12, 14 and 16-bit samples. Tested here on real files:
-Canon EOS 5D Mark III and Nikon D300S DNGs (Bayer, 16-bit), Leica M Monochrom
+Canon EOS 5D Mark III, Nikon D300S and Nikon D3300 DNGs (Bayer, 16-bit), Leica M Monochrom
 (mono, 16-bit) and Leica Q2 Monochrom (mono, 14-bit). Bayer files below
 16-bit are untested here. The Leica M Monochrom Typ 246
 and Pentax K-3 III DNGs are lossless-JPEG compressed and are refused for now.
@@ -71,10 +71,12 @@ plane, meta = irradiance.unpack_bayer(data)          # uint16[H, W], SensorMeta
 x = irradiance.pack_bayer_4ch(plane, meta)                  # uint16[4, H/2, W/2]
 x = irradiance.pack_bayer_4ch(plane, meta, normalize=True)  # float32, see below
 
-# Full develop: levels, Hamilton-Adams demosaic, white balance, colour matrix.
-rgb, version = irradiance.develop(data)               # float32[H, W, 3] linear sRGB, [0, 1]
+# Full develop: levels, Hamilton-Adams demosaic, white balance, colour matrix,
+# cropped (ActiveArea, DefaultCrop) and rotated (Orientation) to the final image.
+rgb, version = irradiance.develop(data)               # float32[h, w, 3] linear sRGB, [0, 1]
+rgb, version = irradiance.develop(data, threads=8)    # same bytes, ~6x faster on one image
 
-# Demosaic only: camera-space RGB, raw values / 65535.
+# Demosaic only: camera-space RGB, raw values / 65535, full sensor plane.
 rgb, version = irradiance.demosaic(data)              # float32[H, W, 3]
 ```
 
@@ -85,9 +87,17 @@ exceed 1. `black` is the per-site `BlackLevel` pattern (origin at the
 `2**bits - 1`). `BlackLevelDeltaH/V` and a `BlackLevelRepeatDim` that doesn't
 fit the 2x2 tile are not supported (the latter raises `ValueError`).
 
-**Cropping:** outputs cover the full plane, including the masked border. To
-keep only active pixels, use `meta.active_area` = `(top, left, bottom, right)`
-(halve it for `pack_bayer_4ch` output when top/left are even).
+**Cropping:** `develop` returns the final image: cropped to `ActiveArea`, then
+`DefaultCrop`, then rotated by `Orientation` (since DEVELOP_VERSION 4; earlier
+versions returned the full plane). The other functions cover the full plane,
+including the masked border. To keep only active pixels there, use
+`meta.active_area` = `(top, left, bottom, right)` (halve it for
+`pack_bayer_4ch` output when top/left are even).
+
+**`threads=`** (`develop`, `demosaic`; default 1) splits one image into row
+bands. The output is byte-identical for every value. Use it for single-image
+latency (a 23 MP develop: 412 ms on 1 thread, 61 ms on 8, Apple M4 Pro); keep
+the default inside DataLoader workers, which already run one decode per core.
 
 **ActiveArea origin:** the CFA and `BlackLevel` patterns start at the
 `ActiveArea` top-left (DNG spec; LibRaw does the same); every function
