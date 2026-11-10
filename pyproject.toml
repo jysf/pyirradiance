@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "irradiance"
-version = "0.0.3"
+version = "0.0.4"
 description = "Crash-proof, GIL-free camera RAW (DNG) decoding for NumPy and PyTorch data loaders"
 readme = "README.md"
 requires-python = ">=3.9"
