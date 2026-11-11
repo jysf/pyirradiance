@@ -134,10 +134,10 @@ DNGs, on an Apple M4 Pro ([full results and method](https://github.com/jysf/pyir
 | | irradiance | rawpy |
 |---|---|---|
 | Raw to normalised `[4, H/2, W/2]` tensor, 23 MP | **11 ms** | 26 ms |
-| Same, 8 threads | **506 files/s** | 238 files/s |
-| Full develop to linear sRGB, 23 MP | **398 ms** | 477 ms |
+| Same, 8 threads | **482 files/s** | 240 files/s |
+| Full develop to linear sRGB, 23 MP | **410 ms** | 472 ms |
 | 212 corrupt files: crashes / hangs | 0 / 0 | 0 / 0 |
-| Peak memory, decode + develop to float32, 23 MP | **705 MB** | 990 MB |
+| Peak memory, decode + develop to float32, 23 MP | **672 MB** | 986 MB |
 | Wheel size | **0.3 MB** | 2-3 MB |
 | Formats | uncompressed DNG | nearly all RAW |
 
